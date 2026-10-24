@@ -2,6 +2,16 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Plus } from 'lucide-react'
 import type { BountyCategory } from '../types'
+import { createBounty } from '../near/contract'
+import type { BountyCategory as ContractCategory } from '../near/contract'
+
+// Map UI lowercase categories to contract title-case
+const CATEGORY_MAP: Record<BountyCategory, ContractCategory> = {
+  fraud: 'Fraud',
+  security: 'Security',
+  policy: 'Policy',
+  legal: 'Legal',
+}
 
 interface PostBountySheetProps {
   open: boolean
@@ -23,14 +33,32 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
   const [pool, setPool] = useState('')
   const [expiry, setExpiry] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const canSubmit = title.length >= 5 && pool.length > 0 && expiry.length > 0
 
   async function handleCreate() {
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 1500))
-    setSubmitting(false)
-    onClose()
+    setError(null)
+    try {
+      const expiryDate = new Date(expiry)
+      const nowMs = Date.now()
+      const expiryDays = Math.max(1, Math.round((expiryDate.getTime() - nowMs) / (24 * 60 * 60 * 1000)))
+      await createBounty({
+        title,
+        description,
+        category: CATEGORY_MAP[category],
+        tierCritical: tiers.critical,
+        tierHigh: tiers.high,
+        tierMedium: tiers.medium,
+        expiryDays,
+      })
+      setSubmitting(false)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Transaction failed')
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -168,6 +196,12 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
                     style={{ background: 'var(--inner-bg)', border: '1px solid var(--border)', color: 'var(--ink)' }}
                   />
                 </Field>
+
+                {error && (
+                  <p className="text-xs text-center" style={{ color: 'var(--error)' }}>
+                    {error}
+                  </p>
+                )}
 
                 <button
                   disabled={!canSubmit || submitting}

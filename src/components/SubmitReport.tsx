@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Lock, Upload, ChevronRight, ChevronLeft, CheckCircle2, Download, AlertCircle } from 'lucide-react'
+import { encryptAndUpload, downloadKeyFile } from '../crypto/encrypt'
+import { submitReport } from '../near/contract'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -22,23 +24,67 @@ export function SubmitReport() {
     connectWallet: false,
   })
   const [submitting, setSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<string>('')
   const [submitted, setSubmitted] = useState(false)
-  const [ipfsCid] = useState('QmXf7dVj3kP9mNr2tHs8wLqBvEyCz4Ap6nUiRdT5oGk1M')
+  const [ipfsCid, setIpfsCid] = useState('')
+  const [keyFileBase64, setKeyFileBase64] = useState('')
 
   const canNext1 = form.reportText.trim().length >= 20
   const canNext2 = form.payoutAddress.trim().length >= 10
 
   async function handleSubmit() {
+    if (!bountyId) return
     setSubmitting(true)
-    // Simulated submit — wired to NEAR contract in build phase
-    await new Promise(r => setTimeout(r, 1800))
-    setSubmitting(false)
-    setSubmitted(true)
-    setStep(4)
+    try {
+      // Step 1: encrypt + upload to IPFS
+      setSubmitStatus('Encrypting report in your browser...')
+
+      // Read file bytes if provided
+      let fileBytes: Uint8Array | undefined
+      if (form.file) {
+        const buf = await form.file.arrayBuffer()
+        fileBytes = new Uint8Array(buf)
+      }
+
+      const result = await encryptAndUpload(
+        form.reportText,
+        form.payoutAddress,
+        fileBytes,
+      )
+      setIpfsCid(result.ipfsCid)
+      setKeyFileBase64(result.keyFile)
+
+      // Step 2: submit hash on NEAR
+      // wrappedKey bundle = ephemeral_pub (65 bytes) || wrapped_aes_key (40 bytes)
+      // We pass the full bundle as wrappedKeyHex and an empty string for ephemeralPubkeyHex
+      // (the contract stores both from the bundle in the TEE scorer step)
+      setSubmitStatus('Submitting to NEAR contract...')
+      await submitReport({
+        bountyId,
+        ipfsCid: result.ipfsCid,
+        payoutAddressHash: result.payoutAddressHash,
+        wrappedKeyHex: result.keyFile,   // base64 bundle; TEE scorer decodes it
+        ephemeralPubkeyHex: '',           // bundled inside wrappedKeyHex
+      })
+
+      setSubmitting(false)
+      setSubmitStatus('')
+      setSubmitted(true)
+      setStep(4)
+    } catch (err) {
+      setSubmitting(false)
+      setSubmitStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
   }
 
   if (submitted && step === 4) {
-    return <SubmitReceipt ipfsCid={ipfsCid} onDone={() => { void navigate('/') }} />
+    return (
+      <SubmitReceipt
+        ipfsCid={ipfsCid}
+        keyFileBase64={keyFileBase64}
+        onDone={() => { void navigate('/') }}
+      />
+    )
   }
 
   return (
@@ -284,7 +330,7 @@ export function SubmitReport() {
             {submitting ? (
               <>
                 <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                Encrypting and submitting...
+                {submitStatus || 'Encrypting and submitting...'}
               </>
             ) : (
               <>
@@ -293,6 +339,12 @@ export function SubmitReport() {
               </>
             )}
           </button>
+
+          {submitStatus.startsWith('Error:') && (
+            <p className="text-xs text-center" style={{ color: 'var(--error)' }}>
+              {submitStatus}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -313,16 +365,17 @@ function ReviewRow({ label, value, mono }: { label: string; value: string; mono?
   )
 }
 
-function SubmitReceipt({ ipfsCid, onDone }: { ipfsCid: string; onDone: () => void }) {
-  function downloadKey() {
-    const key = { note: 'This is your report encryption key. Store it safely.', key: window.crypto.randomUUID() + window.crypto.randomUUID(), ipfsCid }
-    const blob = new Blob([JSON.stringify(key, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `silentproof-key-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+function SubmitReceipt({
+  ipfsCid,
+  keyFileBase64,
+  onDone,
+}: {
+  ipfsCid: string
+  keyFileBase64: string
+  onDone: () => void
+}) {
+  function handleDownloadKey() {
+    downloadKeyFile(keyFileBase64, ipfsCid)
   }
 
   return (
@@ -356,7 +409,7 @@ function SubmitReceipt({ ipfsCid, onDone }: { ipfsCid: string; onDone: () => voi
       </div>
 
       <button
-        onClick={downloadKey}
+        onClick={handleDownloadKey}
         className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
         style={{ background: 'var(--accent)', color: 'var(--bg)' }}
       >
