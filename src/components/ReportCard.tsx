@@ -1,4 +1,4 @@
-import { Clock, CheckCircle2, XCircle } from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import type { Report } from '../types'
 import { TierBadge } from './BountyCard'
 
@@ -32,9 +32,10 @@ interface ReportCardProps {
   report: Report
   onConfirm?: (id: string) => void
   onReject?: (id: string) => void
+  actioning?: boolean
 }
 
-export function ReportCard({ report, onConfirm, onReject }: ReportCardProps) {
+export function ReportCard({ report, onConfirm, onReject, actioning = false }: ReportCardProps) {
   const isPending = report.status === 'pending'
   const isConfirmed = report.status === 'confirmed'
 
@@ -94,16 +95,20 @@ export function ReportCard({ report, onConfirm, onReject }: ReportCardProps) {
       {isPending && onConfirm && onReject && (
         <div className="flex gap-2 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
           <button
+            disabled={actioning}
             onClick={() => onConfirm(report.id)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 active:scale-[0.99]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Confirm · {formatUsd(PAYOUT_AMOUNTS[report.tier])} USDC
+            {actioning
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Confirming...</>
+              : <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm · {formatUsd(PAYOUT_AMOUNTS[report.tier ?? 'medium'])} USDC</>
+            }
           </button>
           <button
+            disabled={actioning}
             onClick={() => onReject(report.id)}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-70"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--inner-bg)', color: 'var(--muted)', border: '1px solid var(--border)' }}
           >
             <XCircle className="w-3.5 h-3.5" />

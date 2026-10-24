@@ -1,69 +1,40 @@
-import { useState } from 'react'
-import { DollarSign, ShieldCheck, FileText, TrendingUp, Plus } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { DollarSign, ShieldCheck, FileText, TrendingUp, Plus, Wallet, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ReportCard } from './ReportCard'
 import { PostBountySheet } from './PostBountySheet'
+import { useNearWallet } from '../near/useNearWallet'
+import { useAllReports, useBounties } from '../near/useBounties'
+import { confirmPayout, rejectReport } from '../near/contract'
+import { buildExplorerAccountUrl } from '../near/config'
 import type { Report, ReportStatus } from '../types'
+import type { Report as NearReport } from '../near/contract'
 
-const MOCK_REPORTS: Report[] = [
-  {
-    id: 'r1',
-    bountyId: 'b1',
-    bountyTitle: 'Financial irregularities in Q3',
-    ipfsCid: 'QmXf7dVj3kP9mNr2tHs8wLqBvEyCz4Ap6nUiRdT5oGk1M',
-    tier: 'critical',
-    credibility: 87,
-    summary: 'Financial irregularities in Q3 procurement: two supplier invoices with inflated unit prices totaling $240K above market rate, both approved by the same manager.',
+function adaptReport(r: NearReport): Report {
+  return {
+    id: r.id,
+    bountyId: r.bounty_id,
+    bountyTitle: r.bounty_id,
+    ipfsCid: r.ipfs_cid,
+    tier: r.tier ? (r.tier.toLowerCase() as Report['tier']) : 'medium',
+    credibility: r.credibility_score ?? 0,
+    summary: r.tee_summary ?? 'Awaiting TEE scoring...',
     category: 'fraud',
-    submittedAt: new Date(Date.now() - 3 * 3_600_000),
-    status: 'pending',
-    payoutAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-  },
-  {
-    id: 'r2',
-    bountyId: 'b2',
-    bountyTitle: 'Smart contract vulnerabilities',
-    ipfsCid: 'QmYz3kRmLpBe8wMvTr7cHfXqDn5Sw9Nb4oPlCaFs6iRn2K',
-    tier: 'high',
-    credibility: 72,
-    summary: 'Reentrancy vulnerability in the withdraw() function — the balance update occurs after the external call, enabling a malicious contract to drain the pool before the state update.',
-    category: 'security',
-    submittedAt: new Date(Date.now() - 6 * 3_600_000),
-    status: 'pending',
-    payoutAddress: 'alice.testnet',
-  },
-  {
-    id: 'r3',
-    bountyId: 'b1',
-    bountyTitle: 'Financial irregularities in Q3',
-    ipfsCid: 'QmAb9pKsVwDe5rFtUy2mXjLnCq7Gz3Oh8iRbTdEsWk4nLP',
-    tier: 'medium',
-    credibility: 91,
-    summary: 'Expense reports for travel to non-existent client meetings, four instances across two quarters, consistent submitter.',
-    category: 'fraud',
-    submittedAt: new Date(Date.now() - 2 * 86_400_000),
-    status: 'confirmed',
-    payoutAddress: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-  },
-  {
-    id: 'r4',
-    bountyId: 'b3',
-    bountyTitle: 'AML policy violations',
-    ipfsCid: 'QmDc2qNtWxBf6kHvLm3sPeJrOy4Ru7Tg9iSbVaEwXh5nMQ',
-    tier: 'medium',
-    credibility: 38,
-    summary: 'Allegation of policy violation without supporting transaction data. Report lacks specific dates, amounts, or counterparty information.',
-    category: 'policy',
-    submittedAt: new Date(Date.now() - 4 * 86_400_000),
-    status: 'rejected',
-    payoutAddress: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
-  },
-]
+    submittedAt: new Date(r.submitted_at_ms),
+    status: r.status.toLowerCase() as ReportStatus,
+    payoutAddress: r.payout_address_hash,
+  }
+}
 
 export function OrgDashboard() {
-  const [reports, setReports] = useState<Report[]>(MOCK_REPORTS)
+  const { accountId, isConnected, isInitializing, signIn, signOut } = useNearWallet()
+  const { reports: nearReports, loading: reportsLoading, refetch } = useAllReports()
+  const { bounties, loading: bountiesLoading } = useBounties()
   const [activeTab, setActiveTab] = useState<ReportStatus>('pending')
   const [showPostBounty, setShowPostBounty] = useState(false)
+  const [actioning, setActioning] = useState<string | null>(null)
 
+  const reports: Report[] = nearReports.map(adaptReport)
   const pending = reports.filter(r => r.status === 'pending')
   const confirmed = reports.filter(r => r.status === 'confirmed')
   const rejected = reports.filter(r => r.status === 'rejected')
@@ -71,15 +42,72 @@ export function OrgDashboard() {
 
   const totalPaid = confirmed.reduce((sum, r) => {
     const amounts: Record<string, number> = { critical: 5000, high: 1000, medium: 250 }
-    return sum + (amounts[r.tier] ?? 0)
+    return sum + (amounts[r.tier ?? 'medium'] ?? 0)
   }, 0)
 
-  function handleConfirm(id: string) {
-    setReports(rs => rs.map(r => r.id === id ? { ...r, status: 'confirmed' } : r))
-  }
+  const totalPool = bounties.reduce((sum, b) => {
+    return sum + Number(b.pool_balance) / 1e6
+  }, 0)
 
-  function handleReject(id: string) {
-    setReports(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+  const handleConfirm = useCallback(async (id: string) => {
+    const report = nearReports.find(r => r.id === id)
+    if (!report) return
+    setActioning(id)
+    try {
+      await confirmPayout(id, report.payout_address_hash)
+      toast.success('Payout confirmed — USDC released on NEAR')
+      void refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Transaction failed')
+    } finally {
+      setActioning(null)
+    }
+  }, [nearReports, refetch])
+
+  const handleReject = useCallback(async (id: string) => {
+    setActioning(id)
+    try {
+      await rejectReport(id)
+      toast.success('Report rejected — USDC stays in pool')
+      void refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Transaction failed')
+    } finally {
+      setActioning(null)
+    }
+  }, [refetch])
+
+  // Not connected state
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-6">
+        <div className="glass-card rounded-3xl p-8 max-w-sm w-full text-center">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ background: 'var(--accent)1a' }}
+          >
+            <Wallet className="w-7 h-7" style={{ color: 'var(--accent)' }} />
+          </div>
+          <h2 className="display font-700 text-xl mb-2" style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}>
+            Connect your NEAR wallet
+          </h2>
+          <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
+            Connect a NEAR account to post bounties and review incoming reports.
+          </p>
+          <button
+            onClick={() => { void signIn() }}
+            disabled={isInitializing}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+          >
+            {isInitializing
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</>
+              : 'Connect with MyNearWallet'
+            }
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -90,9 +118,25 @@ export function OrgDashboard() {
             <h1 className="display font-700 text-2xl" style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}>
               Organization Dashboard
             </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
-              Manage your bounty programs and review incoming reports.
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+              <a
+                href={buildExplorerAccountUrl(accountId!)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs mono hover:underline"
+                style={{ color: 'var(--muted)' }}
+              >
+                {accountId}
+              </a>
+              <button
+                onClick={() => { void signOut() }}
+                className="text-xs hover:underline"
+                style={{ color: 'var(--subtle)' }}
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
           <button
             onClick={() => setShowPostBounty(true)}
@@ -106,9 +150,9 @@ export function OrgDashboard() {
 
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-          <StatCard icon={<DollarSign className="w-4 h-4" />} label="Pool Balance" value="$48,700" sub="USDC" color="var(--success)" />
-          <StatCard icon={<ShieldCheck className="w-4 h-4" />} label="Active Bounties" value="4" sub="programs" color="var(--accent)" />
-          <StatCard icon={<FileText className="w-4 h-4" />} label="Reports in Queue" value={String(pending.length)} sub="pending review" color="var(--tier-high-ink)" />
+          <StatCard icon={<DollarSign className="w-4 h-4" />} label="Pool Balance" value={bountiesLoading ? '...' : `$${totalPool.toLocaleString()}`} sub="USDC" color="var(--success)" />
+          <StatCard icon={<ShieldCheck className="w-4 h-4" />} label="Active Bounties" value={bountiesLoading ? '...' : String(bounties.filter(b => b.active).length)} sub="programs" color="var(--accent)" />
+          <StatCard icon={<FileText className="w-4 h-4" />} label="Reports in Queue" value={reportsLoading ? '...' : String(pending.length)} sub="pending review" color="var(--tier-high-ink)" />
           <StatCard icon={<TrendingUp className="w-4 h-4" />} label="Total Paid Out" value={`$${totalPaid.toLocaleString()}`} sub="USDC" color="var(--accent)" />
         </div>
 
@@ -126,7 +170,6 @@ export function OrgDashboard() {
                 }}
               >
                 {tab}
-                {' '}
                 <span
                   className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
                   style={{
@@ -140,7 +183,12 @@ export function OrgDashboard() {
             ))}
           </div>
 
-          {filtered.length === 0 ? (
+          {reportsLoading ? (
+            <div className="flex items-center justify-center py-16 gap-2" style={{ color: 'var(--subtle)' }}>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading reports from NEAR...</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2">
               <FileText className="w-8 h-8" style={{ color: 'var(--border)' }} />
               <p className="text-sm" style={{ color: 'var(--subtle)' }}>
@@ -153,8 +201,9 @@ export function OrgDashboard() {
                 <ReportCard
                   key={r.id}
                   report={r}
-                  onConfirm={handleConfirm}
-                  onReject={handleReject}
+                  onConfirm={id => { void handleConfirm(id) }}
+                  onReject={id => { void handleReject(id) }}
+                  actioning={actioning === r.id}
                 />
               ))}
             </div>

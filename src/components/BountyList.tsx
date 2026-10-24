@@ -1,11 +1,33 @@
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, Loader2, AlertCircle } from 'lucide-react'
 import { BountyCard } from './BountyCard'
+import { useBounties } from '../near/useBounties'
+import { yoctoToUsdc } from '../near/config'
 import type { Bounty } from '../types'
+import type { Bounty as NearBounty } from '../near/contract'
 
-// Mock data — wired to NEAR contract in the build phase
-const MOCK_BOUNTIES: Bounty[] = [
+// Convert NEAR contract bounty shape to the UI Bounty type
+function adaptBounty(b: NearBounty): Bounty {
+  return {
+    id: b.id,
+    orgName: b.creator,
+    title: b.title,
+    description: b.description,
+    category: b.category.toLowerCase() as Bounty['category'],
+    tiers: {
+      critical: yoctoToUsdc(b.tiers.critical),
+      high: yoctoToUsdc(b.tiers.high),
+      medium: yoctoToUsdc(b.tiers.medium),
+    },
+    poolRemaining: yoctoToUsdc(b.pool_balance),
+    expiryDate: new Date(b.expiry_timestamp_ms),
+    active: b.active,
+  }
+}
+
+// Shown while contract isn't deployed yet (pre-Nov 1 demo)
+const DEMO_BOUNTIES: Bounty[] = [
   {
-    id: 'b1',
+    id: 'demo-b1',
     orgName: 'Acme Corp',
     title: 'Financial irregularities in Q3 procurement contracts',
     description: 'We are seeking reports on any irregularities, kickbacks, or conflicts of interest in our Q3 procurement process involving supplier contracts above $50K.',
@@ -16,7 +38,7 @@ const MOCK_BOUNTIES: Bounty[] = [
     active: true,
   },
   {
-    id: 'b2',
+    id: 'demo-b2',
     orgName: 'ProtocolDAO',
     title: 'Smart contract vulnerabilities in lending protocol',
     description: 'Report security vulnerabilities, potential exploits, or access control issues in our deployed lending protocol contracts. All reports reviewed by our security team.',
@@ -27,7 +49,7 @@ const MOCK_BOUNTIES: Bounty[] = [
     active: true,
   },
   {
-    id: 'b3',
+    id: 'demo-b3',
     orgName: 'GlobalPay Inc',
     title: 'AML policy violations in remittance operations',
     description: 'Confidential reports on potential anti-money laundering policy violations, unreported transactions, or compliance failures in our remittance corridors.',
@@ -38,7 +60,7 @@ const MOCK_BOUNTIES: Bounty[] = [
     active: true,
   },
   {
-    id: 'b4',
+    id: 'demo-b4',
     orgName: 'HealthDAO',
     title: 'Data privacy breaches in patient record handling',
     description: 'Reports on unauthorized access, improper disclosure, or retention violations of patient health records. HIPAA-related concerns encouraged.',
@@ -51,17 +73,26 @@ const MOCK_BOUNTIES: Bounty[] = [
 ]
 
 export function BountyList() {
+  const { bounties: nearBounties, loading, error } = useBounties()
+
+  // Use live NEAR data when available, fall back to demo data
+  const bounties: Bounty[] = nearBounties.length > 0
+    ? nearBounties.map(adaptBounty)
+    : DEMO_BOUNTIES
+
+  const isDemo = nearBounties.length === 0
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
       {/* Hero */}
       <div className="mb-10 max-w-xl">
         <div className="flex items-center gap-2 mb-3">
           <div
-            className="w-1.5 h-1.5 rounded-full"
+            className="w-1.5 h-1.5 rounded-full animate-pulse"
             style={{ background: 'var(--success)' }}
           />
           <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--subtle)', letterSpacing: '0.1em' }}>
-            Live Bounties
+            {loading ? 'Loading...' : isDemo ? 'Demo Bounties' : 'Live Bounties on NEAR'}
           </span>
         </div>
         <h1
@@ -80,9 +111,7 @@ export function BountyList() {
       </div>
 
       {/* How it works strip */}
-      <div
-        className="glass-inner rounded-2xl p-4 mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-4"
-      >
+      <div className="glass-inner rounded-2xl p-4 mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
         {[
           { n: '01', label: 'Pick a bounty', desc: 'Browse active programs below' },
           { n: '02', label: 'Submit anonymously', desc: 'Encrypted end-to-end, no wallet needed' },
@@ -107,8 +136,21 @@ export function BountyList() {
         ))}
       </div>
 
-      {/* Grid */}
-      {MOCK_BOUNTIES.length === 0 ? (
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-2 mb-6 px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--danger)1a', color: 'var(--danger)' }}>
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>Could not reach NEAR contract — showing demo data. ({error})</span>
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading ? (
+        <div className="flex items-center justify-center py-24 gap-2" style={{ color: 'var(--subtle)' }}>
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Loading bounties from NEAR...</span>
+        </div>
+      ) : bounties.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
           <ShieldCheck className="w-10 h-10" style={{ color: 'var(--border)' }} />
           <p className="text-sm" style={{ color: 'var(--subtle)' }}>
@@ -116,8 +158,8 @@ export function BountyList() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-4">
-          {MOCK_BOUNTIES.map(b => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {bounties.map(b => (
             <BountyCard key={b.id} bounty={b} />
           ))}
         </div>
