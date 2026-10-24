@@ -16,13 +16,52 @@ This is the **project memory** - what Arc Studio remembers about building this a
 
 ## Tech Stack
 
-- Frontend: React 18, Vite, TypeScript, Tailwind CSS
-- Web3: wagmi v2, viem v2, ConnectKit
-- Contracts: Solidity 0.8.28 + Foundry. Sources in `contracts/`, unit tests in `contracts/test/*.t.sol`. Build with `bun run contracts:build` (`forge build`), test with `bun run contracts:test` (`forge test`).
-- Wallet: injected (MetaMask, etc.)
-- Chain: Arc Testnet (Chain ID: 5042002, imported from `viem/chains`)
-- Token: USDC (6 decimals) (Address: 0x3600000000000000000000000000000000000000, Chain: Arc Testnet)
+- Frontend: React 18, Vite, TypeScript, Tailwind CSS, react-router-dom v7
+- Blockchain: NEAR testnet — Rust smart contract (NEAR SDK v5)
+- Wallet: NEAR Wallet Selector (org side), anonymous form (submitter side)
+- Encryption: WebCrypto AES-GCM-256 + ECDH key wrapping (client-side, browser)
+- Storage: IPFS (web3.storage) — encrypted blobs only, never plaintext
+- TEE: NEAR AI Cloud (Intel TDX) — Python scorer with ECDSA attestation
 - Toasts: Sonner
+
+## Contract
+
+- Path: `contracts/near/silentproof/src/lib.rs`
+- Language: Rust, NEAR SDK v5.5
+- Build: `cd contracts/near/silentproof && cargo build --target wasm32-unknown-unknown --release`
+- Deploy: `near deploy --accountId silentproof.testnet --wasmFile target/wasm32-unknown-unknown/release/silentproof.wasm`
+- Contract ID (testnet): TBD — deploy on Nov 1 when build window opens
+- USDC contract (testnet): `usdc.fakes.testnet`
+
+## Key Functions (contract)
+
+| Function | Caller | Description |
+|---|---|---|
+| `create_bounty` | Org | Create bounty, funded separately via ft_transfer_call |
+| `ft_on_transfer` | USDC contract | NEP-141 callback — funds the bounty pool |
+| `submit_report` | Anyone (relayable) | Store IPFS CID + payout address hash |
+| `record_tee_score` | TEE Function Call Key | Write severity tier + credibility score |
+| `confirm_payout` | Org | Release USDC to submitter's payout address |
+| `reject_report` | Org | Keep USDC in pool |
+| `withdraw_bounty` | Org | Reclaim unspent pool after expiry |
+
+## TEE Scorer
+
+- Path: `tee/scorer.py`
+- Run: `pip install -r tee/requirements.txt && python tee/scorer.py --report-id <id> --ipfs-cid <cid> --wrapped-key <b64>`
+- Set env: `TEE_PRIVATE_KEY_HEX`, `NEAR_AI_API_KEY`, `SILENTPROOF_CONTRACT_ID`
+- First run generates a key pair and prints the `register_tee_key` command
+
+## Encryption
+
+- Path: `src/crypto/encrypt.ts`
+- Main export: `encryptAndUpload(reportText, payoutAddress, fileBytes?)`
+- TEE public key: update `TEE_PUBLIC_KEY_HEX` after deploying the TEE scorer
+
+## GitHub
+
+- Repo: https://github.com/Abbagigo13/silentproof
+- Branch: main
 
 ## Key Files
 
