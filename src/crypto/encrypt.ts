@@ -190,21 +190,22 @@ export async function buildEncryptedPayload(
   return { payloadJson, payoutAddressHash, keyFile }
 }
 
-// ─── IPFS upload (Pinata) ─────────────────────────────────────────────────────
+// ─── IPFS upload (Pinata v3 Files API) ────────────────────────────────────────
 
 async function uploadToIpfs(payloadJson: string): Promise<string> {
   const jwt = (import.meta.env.VITE_PINATA_JWT as string | undefined)?.trim()
   if (!jwt) {
     throw new Error(
-      'IPFS upload is not configured. Set VITE_PINATA_JWT to a Pinata API key limited to pinning.',
+      'IPFS upload is not configured. Set VITE_PINATA_JWT to a Pinata API key with Files: Write only.',
     )
   }
 
   const form = new FormData()
   form.append('file', new Blob([payloadJson], { type: 'application/json' }), 'report.enc.json')
-  form.append('pinataMetadata', JSON.stringify({ name: 'silentproof-report' }))
+  // Public network so the scorer can fetch the (encrypted) blob from any IPFS gateway
+  form.append('network', 'public')
 
-  const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+  const response = await fetch('https://uploads.pinata.cloud/v3/files', {
     method: 'POST',
     headers: { Authorization: `Bearer ${jwt}` },
     body: form,
@@ -212,9 +213,10 @@ async function uploadToIpfs(payloadJson: string): Promise<string> {
   if (!response.ok) {
     throw new Error(`IPFS upload failed (${response.status})`)
   }
-  const data = (await response.json()) as { IpfsHash?: string }
-  if (!data.IpfsHash) throw new Error('IPFS upload returned no CID')
-  return data.IpfsHash
+  const body = (await response.json()) as { data?: { cid?: string } }
+  const cid = body.data?.cid
+  if (!cid) throw new Error('IPFS upload returned no CID')
+  return cid
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────

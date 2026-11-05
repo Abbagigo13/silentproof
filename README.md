@@ -137,7 +137,7 @@ bun install
 |---|---|---|
 | `VITE_NEAR_CONTRACT_ADDRESS` | Deployed NEAR contract account (defaults to `abbagigo.testnet`) | No |
 | `VITE_TEE_PUBLIC_KEY` | Scorer encryption key (65-byte P-256 hex). Printed by `bun run tee:keygen` | Yes, to submit reports |
-| `VITE_PINATA_JWT` | Pinata API key limited to pinning, used to upload encrypted reports to IPFS | Yes, to submit reports |
+| `VITE_PINATA_JWT` | Pinata API key with Files: Write only, used to upload encrypted reports to IPFS | Yes, to submit reports |
 | `RPC_PROXY_BASE_URL` | Arc Studio RPC proxy base URL | Optional (Arc Studio only) |
 | `RPC_PROXY_TOKEN` | Arc Studio RPC proxy token | Optional (Arc Studio only) |
 | `RPC_PROXY_CHAINS` | Comma-separated chain keys for RPC proxy | Optional (Arc Studio only) |

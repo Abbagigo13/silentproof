@@ -87,5 +87,5 @@ bun run dev
 
 ## Setup still required before a real end-to-end run
 - `bun run tee:keygen`, then set `VITE_TEE_PUBLIC_KEY` and run the printed `register_tee_key` command as the owner
-- `VITE_PINATA_JWT` (Pinata key limited to pinning) for IPFS uploads
+- `VITE_PINATA_JWT` (Pinata key with Files: Write only) for IPFS uploads
 - Test USDC for the org account on `usdc.fakes.testnet`, plus the one-time "Register contract for USDC" button
