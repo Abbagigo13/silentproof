@@ -31,6 +31,7 @@ export function SubmitReport() {
   const [ipfsCid, setIpfsCid] = useState('')
   const [keyFileBase64, setKeyFileBase64] = useState('')
 
+  const isRealBounty = bountyId !== undefined && /^\d+$/.test(bountyId)
   const canNext1 = form.reportText.trim().length >= 20
   const canNext2 = form.payoutAddress.trim().length >= 10
 
@@ -96,6 +97,15 @@ export function SubmitReport() {
         <ChevronLeft className="w-4 h-4" />
         {step === 1 ? 'Back to bounties' : 'Previous step'}
       </button>
+
+      {!isRealBounty && (
+        <div className="glass-inner rounded-2xl p-4 mb-6">
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
+            This is a sample bounty shown for illustration. It is not on NEAR, so reports cannot be
+            submitted to it. Post a real bounty from the Organization dashboard to try the full flow.
+          </p>
+        </div>
+      )}
 
       {!isConnected && (
         <div className="glass-inner rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">
@@ -337,7 +347,7 @@ export function SubmitReport() {
           </p>
 
           <button
-            disabled={submitting || !isConnected}
+            disabled={submitting || !isConnected || !isRealBounty}
             onClick={() => { void handleSubmit() }}
             className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}
