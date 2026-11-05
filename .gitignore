@@ -7,3 +7,7 @@ contracts/cache/
 dist/
 console.jsonl
 traces.jsonl
+
+# Rust build output
+contracts/near/silentproof/target/
+target/
