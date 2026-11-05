@@ -53,6 +53,7 @@ pub type BountyId = u64;
 pub type ReportId = u64;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[borsh(crate = "near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub enum BountyCategory {
     Fraud,
@@ -62,6 +63,7 @@ pub enum BountyCategory {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[borsh(crate = "near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub enum SeverityTier {
     Critical,
@@ -70,6 +72,7 @@ pub enum SeverityTier {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[borsh(crate = "near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub enum ReportStatus {
     Pending,
@@ -80,6 +83,7 @@ pub enum ReportStatus {
 // ─── Storage structs ──────────────────────────────────────────────────────────
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[borsh(crate = "near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub struct Bounty {
     pub id: BountyId,
@@ -102,6 +106,7 @@ pub struct Bounty {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[borsh(crate = "near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub struct Report {
     pub id: ReportId,
@@ -141,6 +146,7 @@ pub trait FungibleToken {
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[borsh(crate = "near_sdk::borsh")]
 pub struct SilentProof {
     /// Contract owner (can register TEE key, pause contract)
     owner: AccountId,
@@ -171,10 +177,10 @@ impl SilentProof {
         Self {
             owner,
             tee_public_key: None,
-            bounties: UnorderedMap::new(b"b"),
-            reports: UnorderedMap::new(b"r"),
-            bounties_by_org: LookupMap::new(b"bo"),
-            reports_by_bounty: LookupMap::new(b"rb"),
+            bounties: UnorderedMap::new(b"b".to_vec()),
+            reports: UnorderedMap::new(b"r".to_vec()),
+            bounties_by_org: LookupMap::new(b"o".to_vec()),
+            reports_by_bounty: LookupMap::new(b"q".to_vec()),
             next_bounty_id: 0,
             next_report_id: 0,
             paused: false,
@@ -250,7 +256,7 @@ impl SilentProof {
         // Register in org index
         let org = env::predecessor_account_id();
         if !self.bounties_by_org.contains_key(&org) {
-            self.bounties_by_org.insert(&org, &Vector::new(format!("bo_{}", org).as_bytes()));
+            self.bounties_by_org.insert(&org, &Vector::new(format!("vo:{}", org).into_bytes()));
         }
         let mut org_bounties = self.bounties_by_org.get(&org).unwrap();
         org_bounties.push(&id);
@@ -342,7 +348,7 @@ impl SilentProof {
 
         // Register in bounty index
         if !self.reports_by_bounty.contains_key(&bounty_id) {
-            self.reports_by_bounty.insert(&bounty_id, &Vector::new(format!("rb_{}", bounty_id).as_bytes()));
+            self.reports_by_bounty.insert(&bounty_id, &Vector::new(format!("vr:{}", bounty_id).into_bytes()));
         }
         let mut bounty_reports = self.reports_by_bounty.get(&bounty_id).unwrap();
         bounty_reports.push(&id);
@@ -372,7 +378,6 @@ impl SilentProof {
         tier: SeverityTier,
         score: u8,
         summary_hash: String,
-        /// Hex-encoded ECDSA signature over keccak256(report_id || tier || score || summary_hash)
         signature_hex: String,
     ) {
         require!(score <= 100, "Score must be 0–100");
@@ -414,8 +419,9 @@ impl SilentProof {
             "Signature recovery failed — invalid TEE signature"
         );
         let recovered_key = recovered.unwrap();
+        require!(key_bytes[0] == 0x04, "TEE key must be uncompressed (0x04 prefix)");
         require!(
-            recovered_key == key_bytes.as_slice(),
+            recovered_key.as_slice() == &key_bytes[1..],
             "Signature does not match registered TEE key"
         );
 
