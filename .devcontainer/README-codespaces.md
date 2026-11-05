@@ -97,36 +97,24 @@ printf 'VITE_NEAR_CONTRACT_ADDRESS=<your-account>.testnet\n' >> /home/user/app/.
 
 ---
 
-## Step 5 — Start the TEE scorer (optional for demo)
+## Step 5 — Set up the TEE scorer
 
-The TEE scorer handles AI scoring of reports. For the hackathon demo you can
-run it locally inside the Codespace:
+From the project root in the Codespace:
 
 ```bash
-cd tee
-python scorer.py
+bun install
+bun run tee:keygen
 ```
 
-On startup it prints its ECDSA public key:
-```
-TEE scorer ready
-Public key (hex): 04abcd...
-```
+It prints two things:
+1. `VITE_TEE_PUBLIC_KEY=...` for the app's `.env`
+2. A `near call ... register_tee_key ...` command. Run it once as the contract owner.
 
-Copy that hex value and set it in Arc Studio's `.env`:
-```
-VITE_TEE_PUBLIC_KEY=04abcd...
-```
+Then start scoring new reports:
 
-Then re-run the deploy script with the TEE key:
 ```bash
-near call <your-account>.testnet register_tee_key \
-  '{"tee_public_key_hex": "04abcd..."}' \
-  --accountId <your-account>.testnet \
-  --networkId testnet
+bun run tee:watch
 ```
-
----
 
 ## Step 6 — Run the frontend
 

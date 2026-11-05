@@ -11,3 +11,6 @@ traces.jsonl
 # Rust build output
 contracts/near/silentproof/target/
 target/
+
+# TEE private keys
+tee/.keys.json

@@ -27,7 +27,7 @@ SilentProof has four layers, each with a distinct trust boundary:
                         │ attested score write
 ┌───────────────────────▼─────────────────────────────────────────┐
 │  NEAR AI Cloud TEE (Intel TDX)                                  │
-│  Python scorer — decrypts via E2EE, runs LLM, signs result     │
+│  TEE scorer (TypeScript) — decrypts, runs LLM, signs result     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -113,16 +113,16 @@ USDC on NEAR is a NEP-141 fungible token. The contract uses `ft_on_transfer` to 
    iv = crypto.getRandomValues(new Uint8Array(12))
    ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
 
-4. Upload to IPFS:
-   blob = new Blob([iv, ciphertext])  // prepend IV for decryption
-   cid = await ipfsClient.add(blob)
+4. Wrap the AES key for the TEE (P-256 ECDH + HKDF + AES-KW):
+   teePublic = VITE_TEE_PUBLIC_KEY   // 65-byte uncompressed P-256 point
+   ephemeral = generateKey ECDH P-256
+   secret    = deriveBits(ECDH(ephemeral.private, teePublic), 256)
+   wrapKey   = HKDF-SHA256(secret, salt = empty, info = "silentproof-key-wrap") -> AES-KW 256
+   bundle    = ephemeral.public (65 bytes) || AES-KW(aesKey)  (40 bytes)
 
-5. Wrap key for TEE (E2EE):
-   teePublicKey = await fetchTeePublicKey()  // from TEE attestation report
-   wrappedKey = await crypto.subtle.wrapKey('raw', key, teePublicKey, { name: 'RSA-OAEP' })
-
-6. Send to TEE:
-   POST /score { cid, wrappedKey, reportId }  // TEE endpoint, TLS
+5. Upload one JSON blob to IPFS (Pinata): { version, ciphertext, iv, wrappedKey: bundle }
+   Only the CID and the SHA-256 of the payout address go onchain.
+   The TEE finds the report by watching the contract; nothing is sent to it directly.
 ```
 
 ### Key export (user backup)
@@ -139,37 +139,41 @@ The key file allows the submitter to decrypt their own report later, or to share
 
 ## 4. TEE scorer
 
-**Location:** `tee/scorer.py`
-**Runtime:** NEAR AI Cloud — Intel TDX confidential VM + NVIDIA H200 GPU TEE
-**Attestation:** Intel Trust Authority (independent verifier)
+**Location:** `tee/scorer.ts` (crypto in `tee/crypto.ts`, tests in `tee/crypto.test.ts`)
+**Runtime (production design):** NEAR AI Cloud, Intel TDX confidential VM
+**Testnet demo:** runs as a normal process (`bun run tee:watch`); not inside a real enclave
+
+### Keys
+
+Two separate keys, because no single curve serves both jobs:
+
+| Key | Curve | Purpose |
+|---|---|---|
+| Encryption | P-256 (ECDH) | Browsers can encrypt to it with WebCrypto. Public half goes in `VITE_TEE_PUBLIC_KEY`. |
+| Signing | secp256k1 | NEAR's `ecrecover` verifies it. Public half is registered with `register_tee_key`. |
 
 ### Lifecycle
 
 ```
-1. Startup:
-   - Load ECDSA signing key from sealed TEE storage (never leaves enclave)
-   - Publish public key to NEAR contract via register_tee_key (owner tx, once)
-   - Fetch TEE attestation report from Intel Trust Authority
+1. Setup (once): `bun run tee:keygen`, set VITE_TEE_PUBLIC_KEY, register the signing key.
 
-2. Per-report handling:
-   a. Receive { cid, wrappedKey, reportId } from frontend (TLS channel)
-   b. Unwrap AES key using TEE's RSA private key (RSA-OAEP)
-   c. Fetch encrypted blob from IPFS by CID
-   d. Decrypt with AES-GCM key + prepended IV
-   e. Run LLM inference:
-      - Severity tier: Critical | High | Medium (based on specificity, evidence, impact)
-      - Credibility score: 0–100 (based on detail, consistency, verifiability)
-      - One-line summary: <100 chars, no PII, no identifying detail
-   f. Hash the summary text (SHA-256) → summary_hash
-   g. Sign (report_id || tier || score || summary_hash) with ECDSA key
-   h. POST to NEAR RPC: record_tee_score(report_id, tier, score, summary_hash, sig)
-   i. Return { tier, score, summaryHash } to caller (not the plaintext summary)
-   j. Wipe decrypted report from memory
+2. Watch: `bun run tee:watch` polls the contract for Pending reports with no score.
+
+3. Per report:
+   a. Fetch the encrypted blob from IPFS by CID
+   b. Unwrap the AES key (ECDH + HKDF + AES-KW), decrypt with AES-GCM
+   c. Score: severity (Critical | High | Medium), credibility 0-100, one-line anonymized summary
+   d. summary_hash = SHA-256(summary). The summary text stays in the scorer.
+   e. digest = keccak256(report_id u64 LE || tier u8 || score u8 || summary_hash 32 bytes)
+   f. Sign the digest with the secp256k1 key (low-S, recovery id 0 or 1)
+   g. Self-check: recover the signer and compare to the registered key
+   h. Send record_tee_score (the contract re-verifies with ecrecover)
+   i. Drop the decrypted report
 ```
 
 ### What the TEE stores (zero)
 
-The TEE does not persist any report content. Every decrypted report is wiped from memory after step (i). The only persistent state is the signing key (sealed) and the NEAR RPC endpoint.
+The TEE does not persist any report content. Every decrypted report is wiped from memory after step (i). The only persistent state is the two keys and the NEAR RPC endpoint.
 
 ### Testnet mock
 
@@ -231,7 +235,7 @@ Browser                    IPFS              NEAR Contract         TEE Scorer
   │ 4. report_id             │                    │                    │
   │◄───────────────────────────────────────────────                    │
   │                          │                    │                    │
-  │ 5. POST /score { CID, wrappedKey, report_id } │                    │
+  │ 5. (scorer watches the contract for new reports)                   │
   │────────────────────────────────────────────────────────────────────►
   │                          │                    │                    │
   │                          │ 6. GET encrypted blob by CID            │

@@ -79,7 +79,7 @@ NEAR provides three primitives that make SilentProof possible in a way no other 
 | Animation | framer-motion |
 | Blockchain | NEAR testnet (Rust smart contract, NEAR SDK v5) |
 | Wallet (org) | NEAR Wallet Selector |
-| TEE / AI | NEAR AI Cloud (Intel TDX), Python scorer |
+| TEE / AI | NEAR AI Cloud (Intel TDX) design, TypeScript scorer (`tee/`) |
 | Anonymity | WebCrypto AES-GCM-256, IPFS (web3.storage) |
 | Icons | lucide-react |
 
@@ -135,9 +135,9 @@ bun install
 
 | Variable | Purpose | Required |
 |---|---|---|
-| `VITE_NEAR_CONTRACT_ID` | Deployed NEAR contract account ID | Yes (after contract deploy) |
-| `VITE_NEAR_NETWORK` | `testnet` or `mainnet` | Yes |
-| `VITE_IPFS_GATEWAY` | IPFS gateway URL, e.g. `https://w3s.link/ipfs/` | Yes |
+| `VITE_NEAR_CONTRACT_ADDRESS` | Deployed NEAR contract account (defaults to `abbagigo.testnet`) | No |
+| `VITE_TEE_PUBLIC_KEY` | Scorer encryption key (65-byte P-256 hex). Printed by `bun run tee:keygen` | Yes, to submit reports |
+| `VITE_PINATA_JWT` | Pinata API key limited to pinning, used to upload encrypted reports to IPFS | Yes, to submit reports |
 | `RPC_PROXY_BASE_URL` | Arc Studio RPC proxy base URL | Optional (Arc Studio only) |
 | `RPC_PROXY_TOKEN` | Arc Studio RPC proxy token | Optional (Arc Studio only) |
 | `RPC_PROXY_CHAINS` | Comma-separated chain keys for RPC proxy | Optional (Arc Studio only) |
@@ -159,6 +159,18 @@ bun run build
 ```bash
 bun run check
 ```
+
+### Scorer
+
+The scorer decrypts new reports, scores them and records the result onchain. It needs the `near` CLI logged in as the sending account.
+
+```bash
+bun run tee:keygen   # create keys, print VITE_TEE_PUBLIC_KEY and the register_tee_key command
+bun run tee:watch    # score new reports as they arrive (add --dry-run to skip sending)
+bun run test:tee     # encryption and signature tests
+```
+
+Optional scorer environment: `SILENTPROOF_CONTRACT_ID`, `TEE_ACCOUNT_ID`, `NEAR_AI_API_KEY` (LLM scoring; a keyword scorer is used without it).
 
 ---
 

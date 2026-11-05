@@ -47,10 +47,11 @@ This is the **project memory** - what Arc Studio remembers about building this a
 
 ## TEE Scorer
 
-- Path: `tee/scorer.py`
-- Run: `pip install -r tee/requirements.txt && python tee/scorer.py --report-id <id> --ipfs-cid <cid> --wrapped-key <b64>`
-- Set env: `TEE_PRIVATE_KEY_HEX`, `NEAR_AI_API_KEY`, `SILENTPROOF_CONTRACT_ID`
-- First run generates a key pair and prints the `register_tee_key` command
+- Path: `tee/scorer.ts` (+ `tee/crypto.ts`, tests: `bun run test:tee`)
+- `bun run tee:keygen` creates `tee/.keys.json` (gitignored) and prints VITE_TEE_PUBLIC_KEY plus the `register_tee_key` command
+- `bun run tee:watch` scores new reports; `bun run tee:score -- --report-id N`; add `--dry-run` to skip sending
+- Sending uses the `near` CLI, so the sending account must be logged in
+- Env (optional): `SILENTPROOF_CONTRACT_ID`, `TEE_ACCOUNT_ID`, `NEAR_AI_API_KEY`, `NEAR_RPC_URL`
 
 ## Encryption
 
@@ -84,7 +85,7 @@ bun run dev
 - Prize payout account for the hackathon form (mainnet): `abbagigo.tg`
 - None of the contract's change methods are `#[payable]`: attach 0 deposit (only USDC `ft_transfer_call` takes 1 yocto)
 
-## Known gaps (TEE scorer, tee/scorer.py + src/crypto/encrypt.ts)
-- Browser WebCrypto cannot do secp256k1 ECDH; scorer needs a separate P-256 key for decryption and a secp256k1 key for signing/ecrecover
-- Key-wrap derivation differs (WebCrypto uses raw ECDH secret; scorer applies HKDF)
-- Signature recovery byte is hardcoded to 27; scorer does not yet send the NEAR transaction
+## Setup still required before a real end-to-end run
+- `bun run tee:keygen`, then set `VITE_TEE_PUBLIC_KEY` and run the printed `register_tee_key` command as the owner
+- `VITE_PINATA_JWT` (Pinata key limited to pinning) for IPFS uploads
+- Test USDC for the org account on `usdc.fakes.testnet`, plus the one-time "Register contract for USDC" button

@@ -28,10 +28,7 @@ echo "→ Installing near-cli..."
 npm install -g near-cli@latest
 echo "✓ near-cli $(near --version)"
 
-# ─── 4. Python deps for TEE scorer ───────────────────────────────────────────
-echo "→ Installing Python dependencies for TEE scorer..."
-pip install -r tee/requirements.txt --quiet
-echo "✓ Python deps installed"
+# ─── 4. (TEE scorer is TypeScript; dependencies come from `bun install`) ────
 
 # ─── 5. Frontend deps ────────────────────────────────────────────────────────
 echo "→ Installing frontend dependencies (bun)..."

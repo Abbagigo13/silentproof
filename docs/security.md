@@ -101,10 +101,10 @@ The encryption key is generated in the browser and never sent to any server in p
 - A subpoena against SilentProof cannot produce report contents — the company does not have the key
 
 ### Key wrapping for TEE
-The symmetric key is wrapped with the TEE's RSA-OAEP public key (obtained from its Intel Trust Authority attestation report) before being sent to the TEE endpoint. This ensures:
-- The key travels encrypted over TLS to the TEE
-- Inside the TEE, the private key unwraps it in hardware
-- The host OS cannot observe the unwrapped key
+The symmetric key is wrapped to the TEE's P-256 public key (ephemeral ECDH, HKDF-SHA256, AES-KW) and stored inside the encrypted blob on IPFS. This ensures:
+- The wrapped key is useless without the TEE's private key
+- Each submission uses a fresh ephemeral key, so submissions cannot be linked by key
+- In the production design the private key lives only in enclave memory; on testnet it is a local file (`tee/.keys.json`, gitignored)
 
 ---
 

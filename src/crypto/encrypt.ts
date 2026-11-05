@@ -1,59 +1,48 @@
 /**
- * SilentProof — Client-side Encryption
- *
- * All encryption happens in the browser using the WebCrypto API.
- * No key material ever leaves the browser in plaintext.
+ * SilentProof — client-side encryption (browser, WebCrypto only)
  *
  * Flow:
  *   1. Generate a fresh AES-GCM-256 key for this submission
- *   2. Encrypt the report text + attachments with that key
- *   3. Encrypt the AES key to the TEE's ECDH public key
- *   4. Upload the ciphertext blob to IPFS
- *   5. Return: { ipfsCid, encryptedKey, payoutAddressHash }
+ *   2. Encrypt the report text (+ optional file) with it
+ *   3. Wrap the AES key to the TEE's P-256 ECDH public key:
+ *        ephemeral ECDH -> HKDF-SHA256 (info "silentproof-key-wrap") -> AES-KW
+ *   4. Upload the ciphertext blob to IPFS (Pinata)
+ *   5. Return the CID and the SHA-256 of the payout address (both go onchain)
  *
- * The IPFS CID and the encrypted key blob go on-chain.
- * The plaintext never touches any server.
+ * The plaintext and the raw AES key never leave the browser. Only the TEE,
+ * holding the matching P-256 private key, can unwrap the AES key.
+ *
+ * The bundle format is shared with tee/crypto.ts; change both together.
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface EncryptedReport {
-  /** AES-GCM ciphertext as base64 */
-  ciphertext: string
-  /** AES-GCM IV (12 bytes) as base64 */
-  iv: string
-  /** AES-256 key wrapped to TEE's ECDH public key, base64 */
-  wrappedKey: string
-  /** SHA-256 hash of the payout address (hex) — stored on-chain */
-  payoutAddressHash: string
-  /** The raw AES-GCM CryptoKey — kept in memory for the key download */
-  rawKey: CryptoKey
-}
-
 export interface UploadResult {
   /** IPFS CID of the encrypted blob */
   ipfsCid: string
-  /** Hex-encoded SHA-256 of the payout address */
+  /** Hex SHA-256 of the payout address (stored onchain) */
   payoutAddressHash: string
-  /** Base64-encoded JSON key file for the submitter to download */
+  /** Base64 JSON key file for the submitter to download */
   keyFile: string
 }
 
-// ─── TEE public key (ECDH P-256) ─────────────────────────────────────────────
-// In production this is fetched from the NEAR contract (get_contract_info)
-// and verified against the TEE attestation report.
-// For testnet demo we use a fixed development key.
-const TEE_PUBLIC_KEY_HEX =
-  '0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8'
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function base64Encode(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+export interface EncryptedPayload {
+  /** JSON string that gets uploaded to IPFS */
+  payloadJson: string
+  payoutAddressHash: string
+  keyFile: string
 }
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2)
+const WRAP_INFO = 'silentproof-key-wrap'
+
+// ─── Byte helpers ─────────────────────────────────────────────────────────────
+
+function newBytes(length: number): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(new ArrayBuffer(length))
+}
+
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const bytes = newBytes(hex.length / 2)
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16)
   }
@@ -64,210 +53,193 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// ─── SHA-256 hash of the payout address ──────────────────────────────────────
+function toBase64(bytes: Uint8Array): string {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
+// ─── Hashing ──────────────────────────────────────────────────────────────────
 
 export async function hashPayoutAddress(address: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(address.trim().toLowerCase())
-  const hashBuf = await crypto.subtle.digest('SHA-256', data)
-  return bytesToHex(new Uint8Array(hashBuf))
+  const data = new TextEncoder().encode(address.trim().toLowerCase())
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return bytesToHex(new Uint8Array(digest))
 }
 
-// ─── Generate a fresh AES-GCM-256 key ────────────────────────────────────────
-
-async function generateAesKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
-    true, // extractable — needed for key export
-    ['encrypt', 'decrypt']
-  )
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return bytesToHex(new Uint8Array(digest))
 }
 
-// ─── Encrypt report text (+ optional file bytes) with AES-GCM ────────────────
+// ─── TEE public key ───────────────────────────────────────────────────────────
 
-async function encryptReport(
-  reportText: string,
-  fileBytes: Uint8Array | null,
-  aesKey: CryptoKey
-): Promise<{ ciphertext: string; iv: string }> {
-  const encoder = new TextEncoder()
+/** The TEE's P-256 ECDH public key, 65-byte uncompressed point, hex. */
+function configuredTeeKey(): string {
+  const key = (import.meta.env.VITE_TEE_PUBLIC_KEY as string | undefined) ?? ''
+  return key.trim()
+}
 
-  // Build payload: JSON with text + optional file (base64)
-  const payload = JSON.stringify({
-    text: reportText,
-    file: fileBytes ? base64Encode(fileBytes.buffer as ArrayBuffer) : null,
-    timestamp: Date.now(),
-  })
-
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    aesKey,
-    encoder.encode(payload)
-  )
-
-  return {
-    ciphertext: base64Encode(ciphertext),
-    iv: base64Encode(iv.buffer),
+function assertTeeKey(hex: string): void {
+  if (!/^04[0-9a-fA-F]{128}$/.test(hex)) {
+    throw new Error(
+      'TEE encryption key is not configured. Set VITE_TEE_PUBLIC_KEY to the key printed by `bun run tee:keygen`.',
+    )
   }
 }
 
-// ─── Wrap AES key to TEE's ECDH public key ────────────────────────────────────
-// Uses ECDH key agreement + AES-KW to wrap the report key.
-// Only the TEE's private key can unwrap it.
+// ─── Core: encrypt + wrap ─────────────────────────────────────────────────────
 
-async function wrapKeyToTee(aesKey: CryptoKey): Promise<string> {
-  // Import TEE's ECDH public key (uncompressed P-256 point)
-  const teeKeyBytes = hexToBytes(TEE_PUBLIC_KEY_HEX)
-
-  const teePublicKey = await crypto.subtle.importKey(
+async function wrapKeyToTee(aesKey: CryptoKey, teePublicKeyHex: string): Promise<Uint8Array> {
+  const teePublic = await crypto.subtle.importKey(
     'raw',
-    teeKeyBytes.buffer as ArrayBuffer,
+    hexToBytes(teePublicKeyHex),
     { name: 'ECDH', namedCurve: 'P-256' },
     false,
-    []
+    [],
   )
 
-  // Generate an ephemeral ECDH key pair for this submission
   const ephemeral = await crypto.subtle.generateKey(
     { name: 'ECDH', namedCurve: 'P-256' },
     true,
-    ['deriveKey']
+    ['deriveBits'],
   )
 
-  // Derive a shared wrapping key via ECDH
-  const wrappingKey = await crypto.subtle.deriveKey(
-    { name: 'ECDH', public: teePublicKey },
+  const sharedBits = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: teePublic },
     ephemeral.privateKey,
+    256,
+  )
+
+  const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey'])
+  const wrappingKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(new ArrayBuffer(0)),
+      info: new TextEncoder().encode(WRAP_INFO),
+    },
+    hkdfKey,
     { name: 'AES-KW', length: 256 },
     false,
-    ['wrapKey']
+    ['wrapKey'],
   )
 
-  // Wrap the AES report key
-  const wrappedKey = await crypto.subtle.wrapKey('raw', aesKey, wrappingKey, 'AES-KW')
+  const wrapped = new Uint8Array(await crypto.subtle.wrapKey('raw', aesKey, wrappingKey, 'AES-KW'))
+  const ephemeralPublic = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
 
-  // Export ephemeral public key so the TEE can reproduce the ECDH shared secret
-  const ephemeralPubRaw = await crypto.subtle.exportKey('raw', ephemeral.publicKey)
-
-  // Bundle: ephemeral_pub (65 bytes) || wrapped_key (40 bytes for 256-bit AES-KW)
-  const bundle = new Uint8Array(ephemeralPubRaw.byteLength + wrappedKey.byteLength)
-  bundle.set(new Uint8Array(ephemeralPubRaw), 0)
-  bundle.set(new Uint8Array(wrappedKey), ephemeralPubRaw.byteLength)
-
-  return base64Encode(bundle.buffer)
+  // Bundle: ephemeral public key (65 bytes) || wrapped AES key (40 bytes)
+  const bundle = newBytes(ephemeralPublic.length + wrapped.length)
+  bundle.set(ephemeralPublic, 0)
+  bundle.set(wrapped, ephemeralPublic.length)
+  return bundle
 }
 
-// ─── Upload to IPFS via web3.storage ─────────────────────────────────────────
+/**
+ * Encrypt a report and build the JSON blob that is uploaded to IPFS.
+ * Pure crypto, no network. Exported so it can be tested against the TEE side.
+ */
+export async function buildEncryptedPayload(
+  reportText: string,
+  payoutAddress: string,
+  fileBytes: Uint8Array | undefined,
+  teePublicKeyHex: string,
+): Promise<EncryptedPayload> {
+  assertTeeKey(teePublicKeyHex)
 
-async function uploadToIpfs(blob: Blob): Promise<string> {
-  // Uses the public IPFS HTTP API via web3.storage free tier
-  // In production replace with a dedicated endpoint
-  const formData = new FormData()
-  formData.append('file', blob, 'report.enc')
+  const aesKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [
+    'encrypt',
+    'decrypt',
+  ])
 
-  const response = await fetch('https://api.web3.storage/upload', {
-    method: 'POST',
-    headers: {
-      // Authorization header added by the caller if a token is available
-      // For testnet demo, uses public unauthenticated endpoint
-    },
-    body: formData,
+  const iv = crypto.getRandomValues(newBytes(12))
+  const plaintext = JSON.stringify({
+    text: reportText,
+    file: fileBytes ? toBase64(fileBytes) : null,
+    timestamp: Date.now(),
+  })
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, new TextEncoder().encode(plaintext)),
+  )
+
+  const wrappedKey = await wrapKeyToTee(aesKey, teePublicKeyHex)
+  const payoutAddressHash = await hashPayoutAddress(payoutAddress)
+
+  const payloadJson = JSON.stringify({
+    version: 1,
+    ciphertext: toBase64(ciphertext),
+    iv: toBase64(iv),
+    wrappedKey: toBase64(wrappedKey),
+    // The payout address is never in the blob; only its hash goes onchain.
   })
 
-  if (!response.ok) {
-    // Fallback: use IPFS infura gateway
-    const infuraResponse = await fetch('https://ipfs.infura.io:5001/api/v0/add', {
-      method: 'POST',
-      body: formData,
-    })
-    if (!infuraResponse.ok) throw new Error('IPFS upload failed')
-    const infuraData = await infuraResponse.json() as { Hash: string }
-    return infuraData.Hash
+  // Key file: the only copy of the raw key, for the submitter to keep.
+  const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', aesKey))
+  const keyFile = btoa(
+    JSON.stringify({
+      version: 1,
+      note: 'Keep this file private. It is the only way to prove or decrypt your report later.',
+      payoutAddress,
+      payoutAddressHash,
+      aesKey: toBase64(rawKey),
+      iv: toBase64(iv),
+      createdAt: new Date().toISOString(),
+    }),
+  )
+
+  return { payloadJson, payoutAddressHash, keyFile }
+}
+
+// ─── IPFS upload (Pinata) ─────────────────────────────────────────────────────
+
+async function uploadToIpfs(payloadJson: string): Promise<string> {
+  const jwt = (import.meta.env.VITE_PINATA_JWT as string | undefined)?.trim()
+  if (!jwt) {
+    throw new Error(
+      'IPFS upload is not configured. Set VITE_PINATA_JWT to a Pinata API key limited to pinning.',
+    )
   }
 
-  const data = await response.json() as { cid: string }
-  return data.cid
+  const form = new FormData()
+  form.append('file', new Blob([payloadJson], { type: 'application/json' }), 'report.enc.json')
+  form.append('pinataMetadata', JSON.stringify({ name: 'silentproof-report' }))
+
+  const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${jwt}` },
+    body: form,
+  })
+  if (!response.ok) {
+    throw new Error(`IPFS upload failed (${response.status})`)
+  }
+  const data = (await response.json()) as { IpfsHash?: string }
+  if (!data.IpfsHash) throw new Error('IPFS upload returned no CID')
+  return data.IpfsHash
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
  * Encrypt a report and upload it to IPFS.
- * Returns the IPFS CID, payout address hash, and a key file for download.
- *
- * Nothing in this function sends plaintext to any server.
+ * Nothing in this function sends plaintext or the raw key anywhere.
  */
 export async function encryptAndUpload(
   reportText: string,
   payoutAddress: string,
-  fileBytes?: Uint8Array
+  fileBytes?: Uint8Array,
 ): Promise<UploadResult> {
-  // 1. Generate fresh AES-256-GCM key
-  const aesKey = await generateAesKey()
-
-  // 2. Encrypt the report
-  const { ciphertext, iv } = await encryptReport(reportText, fileBytes ?? null, aesKey)
-
-  // 3. Wrap the AES key to the TEE's public key
-  const wrappedKey = await wrapKeyToTee(aesKey)
-
-  // 4. Hash the payout address (this goes on-chain; the plaintext stays off-chain)
-  const payoutAddressHash = await hashPayoutAddress(payoutAddress)
-
-  // 5. Build the IPFS payload
-  const ipfsPayload = JSON.stringify({
-    version: 1,
-    ciphertext,
-    iv,
-    wrappedKey,
-    // No payout address here — it's hashed on-chain, provided only at payout time
-  })
-  const blob = new Blob([ipfsPayload], { type: 'application/json' })
-
-  // 6. Upload to IPFS
-  const ipfsCid = await uploadToIpfs(blob)
-
-  // 7. Build the key file for the submitter to download
-  // This is the ONLY record of the raw AES key — the submitter must save it
-  const rawKeyBytes = await crypto.subtle.exportKey('raw', aesKey)
-  const keyFileData = JSON.stringify({
-    version: 1,
-    note: 'Keep this file safe. It is the only way to decrypt your report if you need to prove its contents.',
-    ipfsCid,
-    payoutAddress,
-    payoutAddressHash,
-    aesKey: base64Encode(rawKeyBytes),
-    iv,
-    createdAt: new Date().toISOString(),
-  })
-
-  return {
-    ipfsCid,
-    payoutAddressHash,
-    keyFile: btoa(keyFileData),
-  }
+  const built = await buildEncryptedPayload(reportText, payoutAddress, fileBytes, configuredTeeKey())
+  const ipfsCid = await uploadToIpfs(built.payloadJson)
+  return { ipfsCid, payoutAddressHash: built.payoutAddressHash, keyFile: built.keyFile }
 }
 
-/**
- * Trigger a browser download of the submitter's key file.
- */
+/** Trigger a browser download of the submitter's key file. */
 export function downloadKeyFile(keyFileBase64: string, ipfsCid: string): void {
-  const content = atob(keyFileBase64)
-  const blob = new Blob([content], { type: 'application/json' })
+  const blob = new Blob([atob(keyFileBase64)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = `silentproof-key-${ipfsCid.slice(0, 8)}.json`
   a.click()
   URL.revokeObjectURL(url)
-}
-
-/**
- * Compute a SHA-256 hash for display purposes (e.g. summary hash in TEE scorer).
- */
-export async function sha256Hex(input: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(input))
-  return bytesToHex(new Uint8Array(hashBuf))
 }
