@@ -2,11 +2,17 @@
  * React hooks for contract data.
  * Polls live NEAR RPC for bounties and reports.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { getBounties, getReportsForBounty, getAllReports, type Bounty, type Report } from './contract'
+import { useState, useEffect, useCallback } from 'react'
+import {
+  getActiveBounties,
+  getBountiesByOrg,
+  getReportsForOrg,
+  type Bounty,
+  type Report,
+} from './contract'
 import { yoctoToUsdc } from './config'
 
-// ─── Bounty list ──────────────────────────────────────────────────────────────
+// ─── Public bounty list ───────────────────────────────────────────────────────
 
 export function useBounties() {
   const [state, setState] = useState<{
@@ -15,79 +21,74 @@ export function useBounties() {
     error: string | null
   }>({ bounties: [], loading: true, error: null })
 
-  const fetch = useCallback(async () => {
+  const refetch = useCallback(async () => {
     try {
-      const data = await getBounties()
+      const data = await getActiveBounties()
       setState({ bounties: data, loading: false, error: null })
     } catch (e) {
-      setState(s => ({ ...s, loading: false, error: e instanceof Error ? e.message : 'Failed to load bounties' }))
+      setState(s => ({
+        ...s,
+        loading: false,
+        error: e instanceof Error ? e.message : 'Failed to load bounties',
+      }))
     }
   }, [])
 
   useEffect(() => {
-    void fetch()
-    const id = setInterval(() => { void fetch() }, 30_000)
-    return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    const first = setTimeout(() => { void refetch() }, 0)
+    const id = setInterval(() => { void refetch() }, 30_000)
+    return () => { clearTimeout(first); clearInterval(id) }
+  }, [refetch])
 
-  return { ...state, refetch: fetch }
+  return { ...state, refetch }
 }
 
-// ─── Reports for a single bounty ─────────────────────────────────────────────
+// ─── Org view: own bounties + reports on them ─────────────────────────────────
 
-export function useReports(bountyId: string | null) {
-  const [state, setState] = useState<{ reports: Report[]; loading: boolean }>({
-    reports: [],
-    loading: false,
-  })
-  const prevId = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!bountyId || bountyId === prevId.current) return
-    prevId.current = bountyId
-    setState({ reports: [], loading: true })
-    getReportsForBounty(bountyId)
-      .then(reports => setState({ reports, loading: false }))
-      .catch(() => setState({ reports: [], loading: false }))
-  }, [bountyId])
-
-  return state
-}
-
-// ─── All reports (org view) ───────────────────────────────────────────────────
-
-export function useAllReports() {
+export function useOrgData(orgAccount: string | null) {
   const [state, setState] = useState<{
+    bounties: Bounty[]
     reports: Report[]
     loading: boolean
     error: string | null
-  }>({ reports: [], loading: true, error: null })
+  }>({ bounties: [], reports: [], loading: true, error: null })
 
-  const fetch = useCallback(async () => {
+  const refetch = useCallback(async () => {
+    if (!orgAccount) return
     try {
-      const data = await getAllReports()
-      setState({ reports: data, loading: false, error: null })
+      const [bounties, reports] = await Promise.all([
+        getBountiesByOrg(orgAccount),
+        getReportsForOrg(orgAccount),
+      ])
+      setState({ bounties, reports, loading: false, error: null })
     } catch (e) {
-      setState(s => ({ ...s, loading: false, error: e instanceof Error ? e.message : 'Failed to load reports' }))
+      setState(s => ({
+        ...s,
+        loading: false,
+        error: e instanceof Error ? e.message : 'Failed to load org data',
+      }))
     }
-  }, [])
+  }, [orgAccount])
 
   useEffect(() => {
-    void fetch()
-    const id = setInterval(() => { void fetch() }, 15_000)
-    return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    const first = setTimeout(() => { void refetch() }, 0)
+    const id = setInterval(() => { void refetch() }, 15_000)
+    return () => { clearTimeout(first); clearInterval(id) }
+  }, [refetch])
 
-  return { ...state, refetch: fetch }
+  return { ...state, refetch }
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
-export function formatUsdc(yocto: string): string {
-  return yoctoToUsdc(yocto).toLocaleString('en-US', {
+export function formatUsdc(baseUnits: string): string {
+  return yoctoToUsdc(baseUnits).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })
+}
+
+/** Nanosecond block timestamp to a JS Date. */
+export function nsToDate(ns: number): Date {
+  return new Date(ns / 1_000_000)
 }

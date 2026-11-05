@@ -18,7 +18,7 @@ export const NEAR_CONFIG = {
  * Format: "silentproof.YOUR_ACCOUNT.testnet"
  */
 export const CONTRACT_ADDRESS: string =
-  (import.meta.env.VITE_NEAR_CONTRACT_ADDRESS as string | undefined) ?? 'silentproof.testnet'
+  (import.meta.env.VITE_NEAR_CONTRACT_ADDRESS as string | undefined) ?? 'abbagigo.testnet'
 
 /**
  * USDC NEP-141 token contract on NEAR testnet.

@@ -4,23 +4,25 @@ import { toast } from 'sonner'
 import { ReportCard } from './ReportCard'
 import { PostBountySheet } from './PostBountySheet'
 import { useNearWallet } from '../near/useNearWallet'
-import { useAllReports, useBounties } from '../near/useBounties'
-import { confirmPayout, rejectReport } from '../near/contract'
-import { buildExplorerAccountUrl } from '../near/config'
+import { useOrgData, nsToDate } from '../near/useBounties'
+import { confirmPayout, rejectReport, fundBounty, registerContractOnUsdc } from '../near/contract'
+import { buildExplorerAccountUrl, yoctoToUsdc } from '../near/config'
 import type { Report, ReportStatus } from '../types'
-import type { Report as NearReport } from '../near/contract'
+import type { Report as NearReport, Bounty as NearBounty } from '../near/contract'
 
-function adaptReport(r: NearReport): Report {
+function adaptReport(r: NearReport, bounty: NearBounty | undefined): Report {
   return {
-    id: r.id,
-    bountyId: r.bounty_id,
-    bountyTitle: r.bounty_id,
+    id: String(r.id),
+    bountyId: String(r.bounty_id),
+    bountyTitle: bounty?.title ?? `Bounty #${r.bounty_id}`,
     ipfsCid: r.ipfs_cid,
-    tier: r.tier ? (r.tier.toLowerCase() as Report['tier']) : 'medium',
-    credibility: r.credibility_score ?? 0,
-    summary: r.tee_summary ?? 'Awaiting TEE scoring...',
-    category: 'fraud',
-    submittedAt: new Date(r.submitted_at_ms),
+    tier: r.tee_tier ? (r.tee_tier.toLowerCase() as Report['tier']) : 'medium',
+    credibility: r.tee_score ?? 0,
+    summary: r.tee_summary_hash
+      ? `Scored by the TEE. Summary hash ${r.tee_summary_hash.slice(0, 12)}...`
+      : 'Awaiting TEE scoring...',
+    category: (bounty?.category.toLowerCase() ?? 'fraud') as Report['category'],
+    submittedAt: nsToDate(r.submitted_at_ns),
     status: r.status.toLowerCase() as ReportStatus,
     payoutAddress: r.payout_address_hash,
   }
@@ -28,46 +30,80 @@ function adaptReport(r: NearReport): Report {
 
 export function OrgDashboard() {
   const { accountId, isConnected, isInitializing, signIn, signOut } = useNearWallet()
-  const { reports: nearReports, loading: reportsLoading, refetch } = useAllReports()
-  const { bounties, loading: bountiesLoading } = useBounties()
+  const { reports: nearReports, bounties, loading: reportsLoading, refetch } = useOrgData(accountId)
+  const bountiesLoading = reportsLoading
   const [activeTab, setActiveTab] = useState<ReportStatus>('pending')
   const [showPostBounty, setShowPostBounty] = useState(false)
   const [actioning, setActioning] = useState<string | null>(null)
+  const [confirmFor, setConfirmFor] = useState<string | null>(null)
+  const [payoutInput, setPayoutInput] = useState('')
+  const [fundId, setFundId] = useState<number | null>(null)
+  const [fundAmount, setFundAmount] = useState('')
 
-  const reports: Report[] = nearReports.map(adaptReport)
+  const reports: Report[] = nearReports.map(r =>
+    adaptReport(r, bounties.find(b => b.id === r.bounty_id)),
+  )
   const pending = reports.filter(r => r.status === 'pending')
   const confirmed = reports.filter(r => r.status === 'confirmed')
   const rejected = reports.filter(r => r.status === 'rejected')
   const filtered = reports.filter(r => r.status === activeTab)
 
   const totalPaid = confirmed.reduce((sum, r) => {
-    const amounts: Record<string, number> = { critical: 5000, high: 1000, medium: 250 }
-    return sum + (amounts[r.tier ?? 'medium'] ?? 0)
+    const raw = nearReports.find(n => String(n.id) === r.id)
+    const bounty = raw ? bounties.find(b => b.id === raw.bounty_id) : undefined
+    if (!bounty) return sum
+    const base = r.tier === 'critical' ? bounty.tier_critical : r.tier === 'high' ? bounty.tier_high : bounty.tier_medium
+    return sum + yoctoToUsdc(base)
   }, 0)
 
-  const totalPool = bounties.reduce((sum, b) => {
-    return sum + Number(b.pool_balance) / 1e6
-  }, 0)
+  const totalPool = bounties.reduce((sum, b) => sum + yoctoToUsdc(b.pool_balance), 0)
 
-  const handleConfirm = useCallback(async (id: string) => {
-    const report = nearReports.find(r => r.id === id)
-    if (!report) return
+  const handleFund = useCallback(async (bountyId: number, amount: number) => {
+    setActioning(`fund-${bountyId}`)
+    try {
+      await fundBounty(bountyId, amount)
+      toast.success('Funding sent. The pool updates once the transfer settles')
+      setFundId(null)
+      setFundAmount('')
+      void refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Funding failed')
+    } finally {
+      setActioning(null)
+    }
+  }, [refetch])
+
+  const handleRegister = useCallback(async () => {
+    setActioning('register')
+    try {
+      await registerContractOnUsdc()
+      toast.success('Contract registered on the USDC token')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Registration failed')
+    } finally {
+      setActioning(null)
+    }
+  }, [])
+
+  const handleConfirm = useCallback(async (id: string, payoutAddress: string) => {
     setActioning(id)
     try {
-      await confirmPayout(id, report.payout_address_hash)
-      toast.success('Payout confirmed — USDC released on NEAR')
+      await confirmPayout(Number(id), payoutAddress.trim().toLowerCase())
+      toast.success('Payout confirmed. USDC released on NEAR')
+      setConfirmFor(null)
+      setPayoutInput('')
       void refetch()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Transaction failed')
     } finally {
       setActioning(null)
     }
-  }, [nearReports, refetch])
+  }, [refetch])
 
   const handleReject = useCallback(async (id: string) => {
     setActioning(id)
     try {
-      await rejectReport(id)
+      await rejectReport(Number(id))
       toast.success('Report rejected — USDC stays in pool')
       void refetch()
     } catch (e) {
@@ -156,6 +192,49 @@ export function OrgDashboard() {
           <StatCard icon={<TrendingUp className="w-4 h-4" />} label="Total Paid Out" value={`$${totalPaid.toLocaleString()}`} sub="USDC" color="var(--accent)" />
         </div>
 
+        {/* Your bounties */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <h2 className="display font-700 text-base" style={{ color: 'var(--ink)' }}>Your bounties</h2>
+            <button
+              onClick={() => { void handleRegister() }}
+              disabled={actioning === 'register'}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+              style={{ background: 'var(--inner-bg)', color: 'var(--muted)' }}
+              title="One-time step so the contract can receive USDC"
+            >
+              {actioning === 'register' ? 'Registering...' : 'Register contract for USDC (once)'}
+            </button>
+          </div>
+          {bounties.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--subtle)' }}>
+              No bounties yet. Post one to get started.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {bounties.map(b => (
+                <div key={b.id} className="glass-inner rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--ink)' }}>{b.title}</p>
+                    <p className="text-xs" style={{ color: 'var(--subtle)' }}>
+                      #{b.id} · Pool ${yoctoToUsdc(b.pool_balance).toLocaleString()} USDC · ends {nsToDate(b.expiry_ns).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {b.active && (
+                    <button
+                      onClick={() => { setFundId(b.id); setFundAmount('') }}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                      style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+                    >
+                      Fund pool
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Report queue */}
         <div>
           <div className="flex items-center gap-1 mb-5">
@@ -201,7 +280,7 @@ export function OrgDashboard() {
                 <ReportCard
                   key={r.id}
                   report={r}
-                  onConfirm={id => { void handleConfirm(id) }}
+                  onConfirm={id => { setConfirmFor(id); setPayoutInput('') }}
                   onReject={id => { void handleReject(id) }}
                   actioning={actioning === r.id}
                 />
@@ -211,7 +290,100 @@ export function OrgDashboard() {
         </div>
       </div>
 
-      <PostBountySheet open={showPostBounty} onClose={() => setShowPostBounty(false)} />
+      <PostBountySheet
+        open={showPostBounty}
+        onClose={() => { setShowPostBounty(false); void refetch() }}
+      />
+
+      {fundId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setFundId(null)}
+        >
+          <div
+            className="glass-card rounded-2xl p-6 w-full max-w-md flex flex-col gap-4"
+            style={{ background: 'var(--sheet-bg)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="display font-700 text-lg" style={{ color: 'var(--ink)' }}>Fund bounty #{fundId}</h3>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Transfers USDC from your wallet into the bounty pool. Minimum 10 USDC. You need a USDC balance
+              and the one-time contract registration above.
+            </p>
+            <input
+              type="number"
+              min="10"
+              value={fundAmount}
+              onChange={e => setFundAmount(e.target.value)}
+              placeholder="e.g. 100"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none tabular-nums"
+              style={{ background: 'var(--inner-bg)', border: '1px solid var(--border)', color: 'var(--ink)' }}
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setFundId(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold" style={{ background: 'var(--inner-bg)', color: 'var(--muted)' }}>
+                Cancel
+              </button>
+              <button
+                disabled={Number(fundAmount) < 10 || actioning === `fund-${fundId}`}
+                onClick={() => { void handleFund(fundId, Number(fundAmount)) }}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-40"
+                style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+              >
+                {actioning === `fund-${fundId}` ? 'Sending...' : 'Send USDC'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmFor !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setConfirmFor(null)}
+        >
+          <div
+            className="glass-card rounded-2xl p-6 w-full max-w-md flex flex-col gap-4"
+            style={{ background: 'var(--sheet-bg)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="display font-700 text-lg" style={{ color: 'var(--ink)' }}>
+              Confirm payout
+            </h3>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              The contract only stores a hash of the submitter's payout address. Enter the address
+              exactly as the submitter provided it. The contract checks it against the hash before
+              sending any USDC.
+            </p>
+            <input
+              type="text"
+              value={payoutInput}
+              onChange={e => setPayoutInput(e.target.value)}
+              placeholder="submitter-account.testnet"
+              className="w-full rounded-xl px-4 py-3 text-sm mono outline-none"
+              style={{ background: 'var(--inner-bg)', border: '1px solid var(--border)', color: 'var(--ink)' }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmFor(null)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                style={{ background: 'var(--inner-bg)', color: 'var(--muted)' }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={payoutInput.trim().length < 2 || actioning === confirmFor}
+                onClick={() => { void handleConfirm(confirmFor, payoutInput) }}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-40"
+                style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+              >
+                {actioning === confirmFor ? 'Sending...' : 'Send USDC'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

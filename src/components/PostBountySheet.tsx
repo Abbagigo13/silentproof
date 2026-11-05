@@ -30,12 +30,11 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<BountyCategory>('fraud')
   const [tiers, setTiers] = useState({ critical: 5000, high: 1000, medium: 250 })
-  const [pool, setPool] = useState('')
   const [expiry, setExpiry] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const canSubmit = title.length >= 5 && pool.length > 0 && expiry.length > 0
+  const canSubmit = title.length >= 5 && expiry.length > 0
 
   async function handleCreate() {
     setSubmitting(true)
@@ -170,22 +169,6 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
                   </div>
                 </Field>
 
-                {/* Pool funding */}
-                <Field label="Pool funding (USDC)">
-                  <input
-                    type="number"
-                    min="0"
-                    value={pool}
-                    onChange={e => setPool(e.target.value)}
-                    placeholder="e.g. 20000"
-                    className="w-full rounded-xl px-4 py-3 text-sm outline-none tabular-nums"
-                    style={{ background: 'var(--inner-bg)', border: '1px solid var(--border)', color: 'var(--ink)' }}
-                  />
-                  <p className="text-xs mt-1.5" style={{ color: 'var(--subtle)' }}>
-                    USDC is transferred from your wallet to the contract at creation.
-                  </p>
-                </Field>
-
                 {/* Expiry */}
                 <Field label="Expiry date">
                   <input
@@ -202,6 +185,11 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
                     {error}
                   </p>
                 )}
+
+                <p className="text-xs" style={{ color: 'var(--subtle)' }}>
+                  The bounty starts with an empty pool. After it is created, fund it from the
+                  "Your bounties" list on this dashboard.
+                </p>
 
                 <button
                   disabled={!canSubmit || submitting}

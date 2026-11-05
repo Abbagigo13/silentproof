@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Lock, Upload, ChevronRight, ChevronLeft, CheckCircle2, Download, AlertCircle } from 'lucide-react'
 import { encryptAndUpload, downloadKeyFile } from '../crypto/encrypt'
 import { submitReport } from '../near/contract'
+import { useNearWallet } from '../near/useNearWallet'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -16,6 +17,7 @@ interface FormState {
 export function SubmitReport() {
   const { bountyId } = useParams<{ bountyId: string }>()
   const navigate = useNavigate()
+  const { accountId, isConnected, isInitializing, signIn } = useNearWallet()
   const [step, setStep] = useState<Step>(1)
   const [form, setForm] = useState<FormState>({
     reportText: '',
@@ -54,17 +56,13 @@ export function SubmitReport() {
       setIpfsCid(result.ipfsCid)
       setKeyFileBase64(result.keyFile)
 
-      // Step 2: submit hash on NEAR
-      // wrappedKey bundle = ephemeral_pub (65 bytes) || wrapped_aes_key (40 bytes)
-      // We pass the full bundle as wrappedKeyHex and an empty string for ephemeralPubkeyHex
-      // (the contract stores both from the bundle in the TEE scorer step)
+      // Step 2: submit the CID and payout hash on NEAR. No plaintext goes onchain.
       setSubmitStatus('Submitting to NEAR contract...')
       await submitReport({
-        bountyId,
+        bountyId: Number(bountyId),
         ipfsCid: result.ipfsCid,
         payoutAddressHash: result.payoutAddressHash,
-        wrappedKeyHex: result.keyFile,   // base64 bundle; TEE scorer decodes it
-        ephemeralPubkeyHex: '',           // bundled inside wrappedKeyHex
+        authorAccount: form.connectWallet ? accountId : null,
       })
 
       setSubmitting(false)
@@ -98,6 +96,23 @@ export function SubmitReport() {
         <ChevronLeft className="w-4 h-4" />
         {step === 1 ? 'Back to bounties' : 'Previous step'}
       </button>
+
+      {!isConnected && (
+        <div className="glass-inner rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
+            Submitting is a NEAR transaction, so a wallet is needed to pay the small gas fee. Your
+            account is not stored with the report unless you opt in below.
+          </p>
+          <button
+            onClick={() => { void signIn() }}
+            disabled={isInitializing}
+            className="text-xs font-semibold px-3 py-2 rounded-lg flex-shrink-0 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+          >
+            Connect wallet
+          </button>
+        </div>
+      )}
 
       {/* Stepper */}
       <div className="flex items-center gap-2 mb-8">
@@ -322,7 +337,7 @@ export function SubmitReport() {
           </p>
 
           <button
-            disabled={submitting}
+            disabled={submitting || !isConnected}
             onClick={() => { void handleSubmit() }}
             className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}

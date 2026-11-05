@@ -1,6 +1,6 @@
 import { ShieldCheck, Loader2, AlertCircle } from 'lucide-react'
 import { BountyCard } from './BountyCard'
-import { useBounties } from '../near/useBounties'
+import { useBounties, nsToDate } from '../near/useBounties'
 import { yoctoToUsdc } from '../near/config'
 import type { Bounty } from '../types'
 import type { Bounty as NearBounty } from '../near/contract'
@@ -8,18 +8,18 @@ import type { Bounty as NearBounty } from '../near/contract'
 // Convert NEAR contract bounty shape to the UI Bounty type
 function adaptBounty(b: NearBounty): Bounty {
   return {
-    id: b.id,
-    orgName: b.creator,
+    id: String(b.id),
+    orgName: b.org_account,
     title: b.title,
     description: b.description,
     category: b.category.toLowerCase() as Bounty['category'],
     tiers: {
-      critical: yoctoToUsdc(b.tiers.critical),
-      high: yoctoToUsdc(b.tiers.high),
-      medium: yoctoToUsdc(b.tiers.medium),
+      critical: yoctoToUsdc(b.tier_critical),
+      high: yoctoToUsdc(b.tier_high),
+      medium: yoctoToUsdc(b.tier_medium),
     },
     poolRemaining: yoctoToUsdc(b.pool_balance),
-    expiryDate: new Date(b.expiry_timestamp_ms),
+    expiryDate: nsToDate(b.expiry_ns),
     active: b.active,
   }
 }

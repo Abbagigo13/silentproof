@@ -75,3 +75,16 @@ This is the **project memory** - what Arc Studio remembers about building this a
 bun install
 bun run dev
 ```
+
+## Deployed contract (NEAR testnet)
+- Account: `abbagigo.testnet` (initialized with owner `abbagigo.testnet`)
+- Deploy tx: GefQcTd3QjExj4zMDbX68KcDckJjYPbNPKdn3eJA2HmU
+- Build: `cargo near build non-reproducible-wasm --no-abi` (in Codespaces), 190 KB wasm
+- Frontend reads it via `VITE_NEAR_CONTRACT_ADDRESS` (set to `abbagigo.testnet`)
+- Prize payout account for the hackathon form (mainnet): `abbagigo.tg`
+- None of the contract's change methods are `#[payable]`: attach 0 deposit (only USDC `ft_transfer_call` takes 1 yocto)
+
+## Known gaps (TEE scorer, tee/scorer.py + src/crypto/encrypt.ts)
+- Browser WebCrypto cannot do secp256k1 ECDH; scorer needs a separate P-256 key for decryption and a secp256k1 key for signing/ecrecover
+- Key-wrap derivation differs (WebCrypto uses raw ECDH secret; scorer applies HKDF)
+- Signature recovery byte is hardcoded to 27; scorer does not yet send the NEAR transaction
