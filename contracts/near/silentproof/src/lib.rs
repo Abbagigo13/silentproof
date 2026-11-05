@@ -144,9 +144,8 @@ pub trait FungibleToken {
 
 // ─── Contract state ───────────────────────────────────────────────────────────
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-#[borsh(crate = "near_sdk::borsh")]
+#[near_sdk::near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct SilentProof {
     /// Contract owner (can register TEE key, pause contract)
     owner: AccountId,
