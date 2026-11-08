@@ -138,7 +138,7 @@ export function OrgDashboard() {
           >
             {isInitializing
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</>
-              : 'Connect with MyNearWallet'
+              : 'Connect NEAR wallet'
             }
           </button>
         </div>
