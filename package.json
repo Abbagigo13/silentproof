@@ -28,6 +28,7 @@
     "@circle-fin/smart-contract-platform": "^10.8.1",
     "@circle-fin/user-controlled-wallets": "^10.8.1",
     "@circle-fin/w3s-pw-web-sdk": "^1.1.11",
+    "@near-js/transactions": "^2.3.0",
     "@near-wallet-selector/core": "^10.1.4",
     "@near-wallet-selector/meteor-wallet": "^10.1.4",
     "@near-wallet-selector/modal-ui": "^10.1.4",

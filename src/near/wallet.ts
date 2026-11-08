@@ -14,7 +14,7 @@
  */
 
 import { setupWalletSelector, type WalletSelector, type AccountState } from '@near-wallet-selector/core'
-import type { FunctionCallAction } from '@near-wallet-selector/core/src/lib/wallet/transactions.types'
+import { actionCreators } from '@near-js/transactions'
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet'
 import { setupModal, type WalletSelectorModal } from '@near-wallet-selector/modal-ui'
 import '@near-wallet-selector/modal-ui/styles.css'
@@ -130,18 +130,15 @@ export async function callContract(opts: CallOptions): Promise<unknown> {
   if (!_selector) throw new Error('Wallet not initialized. Call initWallet() first.')
   const wallet = await _selector.wallet()
 
-  const action: FunctionCallAction = {
-    type: 'FunctionCall',
-    params: {
-      methodName: opts.methodName,
-      args: opts.args,
-      gas: opts.gas ?? '100000000000000',
-      deposit: opts.deposit ?? '0',
-    },
-  }
+  // Wallet Selector v10 expects near-api-js style actions, not plain objects.
+  const action = actionCreators.functionCall(
+    opts.methodName,
+    opts.args,
+    BigInt(opts.gas ?? '100000000000000'),
+    BigInt(opts.deposit ?? '0'),
+  )
 
-  type SimpleTx = { receiverId: string; actions: FunctionCallAction[] }
-  return (wallet.signAndSendTransaction as unknown as (tx: SimpleTx) => Promise<unknown>)({
+  return wallet.signAndSendTransaction({
     receiverId: opts.contractId,
     actions: [action],
   })
