@@ -105,7 +105,7 @@ export function BountyList() {
         </h1>
         <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)', maxWidth: '48ch' }}>
           Every report is encrypted in your browser before it leaves your device.
-          No account, no email, no identity required.
+          No account or email with us. A NEAR wallet only pays the small network fee, and nothing links it to your report unless you choose to.
           Payouts are released in USDC after AI scoring and org review.
         </p>
       </div>
@@ -114,8 +114,8 @@ export function BountyList() {
       <div className="glass-inner rounded-2xl p-4 mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
         {[
           { n: '01', label: 'Pick a bounty', desc: 'Browse active programs below' },
-          { n: '02', label: 'Submit anonymously', desc: 'Encrypted end-to-end, no wallet needed' },
-          { n: '03', label: 'AI scores your report', desc: 'TEE-attested AI assigns a severity tier' },
+          { n: '02', label: 'Submit privately', desc: 'Encrypted in your browser. A wallet only pays the network fee' },
+          { n: '03', label: 'AI scores your report', desc: 'An AI scorer assigns a severity tier and signs it' },
           { n: '04', label: 'Receive USDC', desc: 'Org confirms, payout goes to your address' },
         ].map((step, i) => (
           <div key={step.n} className="flex items-start gap-3 flex-1">

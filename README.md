@@ -1,72 +1,67 @@
 # SilentProof
 
-> Anonymous whistleblower bounty marketplace. File a report. Get paid in USDC. No identity required.
+> A whistleblower bounty marketplace on NEAR. File an encrypted report, get a signed AI severity score, get paid in USDC.
 
-Built with [Arc Studio](https://studio.arc.io) for [NEAR Hackathon](https://near.army/) — tracks **AI Security & Defense** and **Real-World Money**.
+Built with [Arc Studio](https://studio.arc.io) for [NEAR Hackathon](https://near.army/). Tracks: **AI Security & Defense** and **Real-World Money**.
+
+- Live app: https://silentproof-gules.vercel.app
+- Contract (NEAR testnet): [`abbagigo.testnet`](https://testnet.nearblocks.io/address/abbagigo.testnet)
+- Payments: Circle USDC on NEAR testnet (`3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`)
 
 ---
 
 ## The problem
 
-Whistleblowing is one of the most effective mechanisms society has for exposing fraud, corruption, and safety violations. But it is systemically broken for three reasons:
+Whistleblowing exposes fraud, corruption and safety violations, but three things make it fail in practice.
 
-**1. Identity exposure is the default.**
-Every mainstream reporting channel — corporate ethics hotlines, HR portals, email — requires an account, a login, or metadata (IP address, device fingerprint, timestamp) that narrows the pool of plausible reporters to a handful of people. Most people who observe wrongdoing say nothing because the risk is too high relative to the uncertain reward.
-
-**2. Payout promises are unenforceable.**
-When organizations offer whistleblower rewards, the commitment is discretionary. The org sees your report, decides if it is useful, and then decides whether to pay. You have already given up the information. You have no guarantee of compensation for the career and personal risk you took.
-
-**3. There is no credibility signal.**
-Organizations that operate open bounty programs receive a flood of reports — many vague, some retaliatory, a few genuinely valuable. Without a credibility filter, the real reports are buried, triage takes weeks, and the program becomes an operational burden rather than an asset.
-
-None of these problems are solved by a new web form or a "secure" email address. They require cryptographic enforcement, not policy promises.
-
----
+1. **Reporting channels expose the reporter.** Ethics hotlines, HR portals and email need an account or leave metadata that narrows the pool of possible reporters.
+2. **Rewards are discretionary.** An organization reads the report, then decides whether to pay. The reporter has already given up the information and has no guarantee of compensation.
+3. **There is no credibility signal.** Open bounty programs receive a flood of reports, so real ones get buried and triage takes weeks.
 
 ## Who it is for
 
-**Whistleblowers** — employees, contractors, security researchers, journalists' sources, or activists who have observed wrongdoing and want to report it without exposing themselves.
+- **Reporters**: employees, contractors and security researchers who want to report without handing a name to the organization.
+- **Organizations**: companies with compliance duties, DAOs and protocols running security or integrity bounties, and anyone who wants a reward program that is provably funded.
 
-**Organizations** — publicly traded companies with compliance obligations (SOX, GDPR, Dodd-Frank), DAOs and DeFi protocols that want community security reporting, law firms running protected disclosure programs, and regulatory bodies operating public-interest reporting channels.
+## What it does
 
----
+**For reporters**
+- Browse open bounties and pick one.
+- Write a report in a web form. It is encrypted in your browser (AES-GCM-256) before anything leaves the page. Only the encrypted file goes to IPFS, and only its content ID and a hash of your payout address go on NEAR.
+- An AI scorer decrypts the report, rates severity (Critical, High, Medium) and credibility (0 to 100), and records the result on NEAR with a signature the contract verifies.
+- If the organization confirms, USDC is sent to the payout address you gave.
 
-## What we built
+**For organizations**
+- Post a bounty with payout tiers and an expiry date, then fund its pool with USDC. The money sits in the contract, so the commitment is visible and cannot be pulled back before the bounty expires.
+- Review scored reports and confirm or reject each one. A confirmed payout that fails to transfer is rolled back automatically.
 
-SilentProof is an on-chain whistleblower bounty marketplace on NEAR.
+## What is enforced by code
 
-**For submitters:**
-- Browse active bounty programs posted by organizations
-- File a report through a web form — no account, no email, no wallet required
-- The report is encrypted in the browser with AES-GCM-256 before it leaves the device
-- The encrypted blob is uploaded to IPFS — only the content hash goes on-chain
-- An AI model running inside a NEAR Trusted Execution Environment (TEE) scores the report for credibility and severity, without ever exposing the plaintext to any server or operator
-- If the organization confirms the report, USDC is released to a one-time address the submitter provides
+| Property | How |
+|---|---|
+| Reports are private in transit and at rest | Encrypted in the browser. The decryption key is wrapped to the scorer's public key, so the website, IPFS and the contract never see plaintext. |
+| Rewards are funded up front | USDC is deposited into the contract. Withdrawal is only possible after expiry. |
+| The score cannot be forged by the organization | `record_tee_score` only accepts a signature that recovers to the registered scorer key. |
+| Payouts go to the address the reporter chose | The reporter's payout address is stored as a SHA-256 hash. The contract checks the address the organization enters against it. |
 
-**For organizations:**
-- Post a bounty with a title, category, payout tiers (Critical / High / Medium in USDC), and an expiry date
-- Fund the bounty pool — USDC is locked in the contract at creation (binding commitment)
-- Review incoming reports scored by the TEE AI: each card shows a severity tier, a credibility percentage, and a one-line anonymized summary
-- Confirm a payout (releases USDC on-chain) or reject (returns USDC to pool)
+## What is not (be aware)
 
-**Three properties are cryptographically enforced, not policy-enforced:**
-1. **Anonymity** — report plaintext never reaches any server; only the encrypted IPFS hash is on-chain
-2. **Binding commitment** — USDC is locked in the contract before the submitter files; the org cannot silently withdraw while reports are pending
-3. **Credibility signal** — the TEE scorer writes a severity tier and score on-chain using an attested key; the org cannot bypass or fake it
-
----
+- **The scorer is not in a real secure enclave on testnet.** The key handling and message formats follow the intended design, but today the scorer is an ordinary process run by the project. Whoever runs it can read reports and sign scores. Hardware attestation (NEAR AI Cloud, Intel TDX) is the planned next step.
+- **Submitting needs a NEAR wallet to pay the network fee.** The wallet account is not stored with the report unless the reporter opts in, but it is visible on NEAR. Use a fresh account.
+- **The payout address is revealed to the organization** when it confirms, and the payout is a public transfer.
+- **IPFS uploads go through Pinata**, so that service sees an encrypted file and the uploader's IP address.
+- **The scorer is a separate process.** If it is offline, a new report stays at "Awaiting TEE scoring".
 
 ## Why NEAR
 
-NEAR provides three primitives that make SilentProof possible in a way no other stack can match:
-
-| NEAR Feature | How it is used |
+| NEAR feature | Use |
 |---|---|
-| **TEE Attestation** (NEAR AI Cloud, Intel TDX) | The AI scorer runs inside a hardware-isolated enclave. The host OS, the cloud provider, and NEAR AI itself cannot read the decrypted report. The `record_tee_score` contract function is gated to the TEE's attested ECDSA key — no TEE signature, no score write. |
-| **Function Call Keys** | The TEE agent holds a Function Call Key scoped only to `record_tee_score`. It cannot touch pool funds, create bounties, or approve payouts. The key limits the blast radius of a TEE compromise. |
-| **NEP-141 USDC** | Bounty pools are funded and paid out in USDC (NEP-141 fungible token). Stable, predictable, and programmable. No speculative token involved. |
-| **Meta Transactions** | The submitter's `submit_report` call can be relayed by the frontend, meaning no submitter wallet activity appears on-chain. |
-| **Named Accounts** | Org accounts are named NEAR accounts (e.g. `acme.testnet`), making the on-chain org identity human-readable and auditable. |
+| Rust smart contracts and NEP-141 | Bounty pools, report registry and USDC payouts, including automatic rollback of failed transfers. |
+| Onchain signature recovery (`ecrecover`) | The contract accepts a score only from the registered scorer key. |
+| Named accounts | Organizations are readable accounts such as `acme.testnet`. |
+| Wallet Selector | Organizations and reporters connect with Meteor Wallet. |
+
+Planned, not built yet: a function-call-only access key for the scorer, relayed submissions so reporters need no wallet, and cross-chain payouts with NEAR Intents.
 
 ---
 
@@ -74,45 +69,37 @@ NEAR provides three primitives that make SilentProof possible in a way no other 
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS |
-| Routing | react-router-dom v7 |
-| Animation | framer-motion |
-| Blockchain | NEAR testnet (Rust smart contract, NEAR SDK v5) |
-| Wallet (org) | NEAR Wallet Selector |
-| TEE / AI | NEAR AI Cloud (Intel TDX) design, TypeScript scorer (`tee/`) |
-| Anonymity | WebCrypto AES-GCM-256, IPFS (web3.storage) |
-| Icons | lucide-react |
+| Frontend | React 18, Vite, TypeScript, Tailwind CSS, hosted on Vercel |
+| Contract | Rust, NEAR SDK 5, deployed on NEAR testnet |
+| Money | Circle USDC (NEP-141) |
+| Wallet | NEAR Wallet Selector with Meteor Wallet |
+| Encryption | WebCrypto: P-256 ECDH, HKDF, AES-KW and AES-GCM-256 |
+| Storage | IPFS through Pinata |
+| Scorer | TypeScript (`tee/`), secp256k1 signatures, optional LLM scoring |
 
 ---
 
-## How to try it (step by step)
+## Try it (about 10 minutes)
 
-1. Open the app. You land on the **Bounty Marketplace** — a list of active bounty programs.
+You need a browser, and a NEAR testnet account in [Meteor Wallet](https://wallet.meteorwallet.app) (choose testnet). Get free test USDC and gas for that account first.
 
-2. Click **Submit a Report** on any bounty card.
+1. **Get test USDC.** Open https://faucet.circle.com, choose **NEAR Testnet**, paste your account name and request USDC. You also need a little testnet NEAR for fees; Meteor offers a testnet faucet.
+   *You should see:* a USDC balance in your wallet.
+2. **Open the app** at https://silentproof-gules.vercel.app, switch to **Organization** and click **Connect NEAR wallet**.
+   *You should see:* your account name at the top of the dashboard.
+3. **Post a bounty.** Click **Post New Bounty**, keep the defaults (Critical 10, High 5, Medium 2 USDC, 30 days) and create it.
+   *You should see:* the bounty under **Your bounties** with a $0 pool and a warning that the pool is below the Critical payout.
+4. **Fund it.** Click **Fund pool** on that bounty, send 10 USDC and approve. The first time, also click **Register contract for USDC** if funding fails.
+   *You should see:* the pool change to $10 and the warning disappear.
+5. **Submit a report.** Switch to **Submitter**, open that bounty and click **Submit a Report**. Write at least 20 characters (the word "fraud" makes the demo scorer rate it Critical), enter a payout address that can hold Circle USDC (your own account works) and submit. Download the key file on the receipt.
+   *You should see:* a receipt with an IPFS content ID.
+6. **Wait for scoring.** The scorer polls every 15 seconds. In **Organization**, the report appears under **Pending** with a severity badge and a credibility bar.
+   *If it stays "Awaiting TEE scoring":* the scorer is offline. See the Scorer section under Development.
+7. **Confirm the payout.** Click **Confirm**, enter the payout address exactly as you typed it, and approve.
+   *You should see:* the report move to **Confirmed**, the pool drop to $0, and the USDC arrive at the payout address.
+8. **Reject instead (optional).** On another report click **Reject**; the pool is unchanged.
 
-3. **Step 1 — Report:** Enter your report text (minimum 20 characters). Optionally attach a file. Notice the encryption notice: your report is encrypted in the browser before leaving the page.
-
-4. **Step 2 — Payout address:** Enter any EVM (`0x...`) or NEAR (`name.testnet`) address you control. This is where USDC will be sent if your report is confirmed.
-
-5. **Step 3 — Review:** Confirm your submission. Click **Submit Anonymously**. The browser encrypts the report, uploads to IPFS, and logs the CID on NEAR.
-
-6. On the **receipt screen**, note the IPFS Content ID and click **Download encryption key file** — save this file. It is the only way to decrypt your report later.
-
-7. **Switch to Organization mode** using the pill toggle in the top bar.
-
-8. Click **Dashboard**. You see the pool balance, active bounties, reports in queue, and total paid out.
-
-9. In the **Pending** tab, review the AI-scored report cards. Each shows:
-   - Severity tier badge (Critical / High / Medium)
-   - Credibility percentage (0–100, from TEE AI)
-   - One-line anonymized summary generated by the AI
-
-10. Click **Confirm Payout** — a confirmation sheet shows the payout amount and submitter address. Sign the NEAR transaction to release USDC.
-
-11. Click **Reject** to return USDC to the pool.
-
-12. Toggle **light/dark mode** with the sun/moon icon in the top bar. The preference persists across sessions.
+Light and dark mode: the sun and moon icon in the top bar.
 
 ---
 
@@ -190,50 +177,34 @@ Optional scorer environment: `SILENTPROOF_CONTRACT_ID`, `TEE_ACCOUNT_ID`, `NEAR_
 
 ## Roadmap
 
-### v0.1 — Hackathon (Nov 1–14, 2026)
-- [x] Frontend: bounty marketplace, anonymous submission form, org dashboard
-- [x] Light/dark mode with system preference detection
-- [x] Design system with Arc Dark/Light tokens
-- [ ] NEAR Rust contract: bounty pool, report registry, TEE-gated score write, USDC payouts
-- [ ] Client-side AES-GCM-256 encryption + IPFS upload
-- [ ] TEE scorer on NEAR AI Cloud (testnet, mock attestation)
-- [ ] NEAR Wallet Selector integration (org side)
-- [ ] Meta-transaction relay for submitter anonymity
-- [ ] End-to-end testnet demo
+**Done (hackathon, testnet)**
+- [x] Bounty marketplace, encrypted submission flow and organization dashboard
+- [x] Rust contract: pools, reports, signature-gated scoring, USDC payouts with automatic rollback
+- [x] Browser encryption (P-256 ECDH, HKDF, AES-KW, AES-GCM-256) and IPFS upload
+- [x] Scorer: decrypt, score, sign and record onchain, with tests (`bun run test:tee`)
+- [x] Circle USDC and Meteor Wallet
+- [x] Deployed and exercised end to end on NEAR testnet
 
-### v0.2 — Post-hackathon hardening
-- [ ] Real Intel TDX attestation via Intel Trust Authority
-- [ ] TEE key rotation mechanism
-- [ ] NEAR mainnet deployment
-- [ ] Org reputation score (pay rate, response time)
-- [ ] Submitter "follow up" flow using encryption key as auth
-- [ ] Multi-sig org approval (Sputnik DAO integration)
-- [ ] Tor-compatible IPFS gateway option
+**Next**
+- [ ] Run the scorer in a real confidential-compute enclave with hardware attestation
+- [ ] Always-on hosted scorer with a function-call-only access key
+- [ ] Relayed submissions so reporters need no wallet
+- [ ] Reporter follow-up using the encryption key file as proof of authorship
+- [ ] Multi-signature approval for organization payouts
+- [ ] Independent security audit before any mainnet use
 
-### v0.3 — Growth
-- [ ] Org SDK for embedding the submission widget into existing compliance portals
-- [ ] Regulatory report templates (SOX 302, GDPR Article 33, Dodd-Frank)
-- [ ] Bounty expiry notifications via one-way anonymous channel
-- [ ] Cross-chain USDC payouts via NEAR Intents (pay to any EVM chain)
-- [ ] Public org payout record — on-chain proof that an org honors its commitments
-
-### Long-term
-- Decentralized org registry — any DAO can become an org without a named account
-- Verifiable credential issuance for confirmed reporters (proves you reported without revealing what you reported)
-- Integration with existing whistleblower protection legal frameworks (EU Whistleblower Directive, US False Claims Act)
+**Later**
+- [ ] Cross-chain payouts with NEAR Intents
+- [ ] Organization reputation (payout rate and response time)
+- [ ] Embeddable submission widget for existing compliance portals
 
 ---
 
 ## Hackathon submission
 
-**Event:** NEAR Hackathon
-**Tracks:** `security` (AI Security & Defense) + `realworld` (Real-World Money)
-**Submission window:** 2026-11-01 to 2026-11-14T23:59:00Z
-
-Submission details (to be filled before Nov 14):
-- Project name: SilentProof
-- Public repo: _(to be made public before deadline)_
-- Demo post: _(to be published on X)_
+- Event: NEAR Hackathon, tracks `security` and `realworld`
+- Repository: https://github.com/Abbagigo13/silentproof
+- Live app: https://silentproof-gules.vercel.app
 
 ---
 

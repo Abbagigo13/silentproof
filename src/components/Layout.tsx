@@ -102,7 +102,7 @@ export function Layout({ children, mode, onModeChange }: LayoutProps) {
       {/* Footer */}
       <footer className="py-6 text-center" style={{ color: 'var(--subtle)' }}>
         <p className="text-xs">
-          Reports are encrypted end-to-end. No identity is stored.
+          Reports are encrypted in your browser before upload.
           Built for{' '}
           <a
             href="https://near.army/"

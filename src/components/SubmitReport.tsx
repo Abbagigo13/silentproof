@@ -343,7 +343,7 @@ export function SubmitReport() {
           </div>
 
           <p className="text-xs text-center" style={{ color: 'var(--subtle)' }}>
-            This action cannot be undone. Your report will be scored by a TEE-attested AI and reviewed by the organization.
+            This action cannot be undone. Your report will be scored by an AI scorer that signs its result onchain, then reviewed by the organization.
           </p>
 
           <button
@@ -360,7 +360,7 @@ export function SubmitReport() {
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                Submit Anonymously
+                Submit encrypted report
               </>
             )}
           </button>
