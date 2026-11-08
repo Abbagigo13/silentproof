@@ -155,7 +155,12 @@ async function view<T>(method: string, args: Record<string, unknown> = {}): Prom
 
 function runCli(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('near', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    // near-cli reads a custom RPC from NEAR_TESTNET_RPC / NEAR_MAINNET_RPC (it has no --nodeUrl flag)
+    const rpcEnv = NETWORK === 'mainnet' ? 'NEAR_MAINNET_RPC' : 'NEAR_TESTNET_RPC'
+    const child = spawn('near', args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, [rpcEnv]: CLI_NODE_URL },
+    })
     let out = ''
     child.stdout.on('data', (d: Buffer) => { out += d.toString() })
     child.stderr.on('data', (d: Buffer) => { out += d.toString() })
@@ -179,7 +184,6 @@ async function recordScore(
     'call', CONTRACT_ID, 'record_tee_score', JSON.stringify(args),
     '--accountId', TEE_ACCOUNT_ID,
     '--networkId', NETWORK,
-    '--nodeUrl', CLI_NODE_URL,
     '--gas', '100000000000000',
   ])
 }
