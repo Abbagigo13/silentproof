@@ -50,7 +50,7 @@ Whistleblowing exposes fraud, corruption and safety violations, but three things
 - **Submitting needs a NEAR wallet to pay the network fee.** The wallet account is not stored with the report unless the reporter opts in, but it is visible on NEAR. Use a fresh account.
 - **The payout address is revealed to the organization** when it confirms, and the payout is a public transfer.
 - **IPFS uploads go through Pinata**, so that service sees an encrypted file and the uploader's IP address.
-- **The scorer is a separate process.** If it is offline, a new report stays at "Awaiting TEE scoring".
+- **Scoring runs in a serverless function** (`api/score.ts`) that holds the scorer's secrets. It is triggered by the app after a submission and by the organization dashboard, so no server has to stay awake. If it is misconfigured, a report stays at "Awaiting TEE scoring".
 
 ## Why NEAR
 
@@ -93,8 +93,8 @@ You need a browser, and a NEAR testnet account in [Meteor Wallet](https://wallet
    *You should see:* the pool change to $10 and the warning disappear.
 5. **Submit a report.** Switch to **Submitter**, open that bounty and click **Submit a Report**. Write at least 20 characters (the word "fraud" makes the demo scorer rate it Critical), enter a payout address that can hold Circle USDC (your own account works) and submit. Download the key file on the receipt.
    *You should see:* a receipt with an IPFS content ID.
-6. **Wait for scoring.** The scorer polls every 15 seconds. In **Organization**, the report appears under **Pending** with a severity badge and a credibility bar.
-   *If it stays "Awaiting TEE scoring":* the scorer is offline. See the Scorer section under Development.
+6. **Wait for scoring.** In **Organization**, the report appears under **Pending** with a severity badge and a credibility bar once the scorer has signed it.
+   Scoring starts automatically and usually finishes within a minute. If it stays at "Awaiting TEE scoring", the hosted scorer is misconfigured; see the Scorer section under Development.
 7. **Confirm the payout.** Click **Confirm**, enter the payout address exactly as you typed it, and approve.
    *You should see:* the report move to **Confirmed**, the pool drop to $0, and the USDC arrive at the payout address.
 8. **Reject instead (optional).** On another report click **Reject**; the pool is unchanged.
@@ -150,15 +150,25 @@ bun run check
 
 ### Scorer
 
-The scorer decrypts new reports, scores them and records the result onchain. It needs the `near` CLI logged in as the sending account.
+Scoring decrypts a report, rates it, signs the result and records it on NEAR. It runs in two ways that share the same code (`tee/core.ts`):
+
+**Hosted (what the live app uses).** `api/score.ts` runs as a Vercel function. Set these environment variables on the project (not `VITE_` prefixed):
+
+| Variable | Purpose |
+|---|---|
+| `TEE_KEYS_JSON` | Scorer keys. Print with `bun run tee:env` |
+| `TEE_NEAR_PRIVATE_KEY` | Access key that can only call `record_tee_score`. Create with `bun run tee:accesskey` |
+| `TEE_NEAR_ACCOUNT_ID` | Account the access key belongs to (the contract account) |
+| `NEAR_AI_API_KEY` | Optional. Enables LLM scoring; a keyword scorer is used without it |
+
+**Command line (development).** Needs the `near` CLI logged in as the sending account.
 
 ```bash
-bun run tee:keygen   # create keys, print VITE_TEE_PUBLIC_KEY and the register_tee_key command
-bun run tee:watch    # score new reports as they arrive (add --dry-run to skip sending)
-bun run test:tee     # encryption and signature tests
+bun run tee:keygen       # create keys, print VITE_TEE_PUBLIC_KEY and the register_tee_key command
+bun run tee:accesskey    # create the restricted key and print the near add-key command
+bun run tee:watch        # score new reports as they arrive (add --dry-run to skip sending)
+bun run test:tee         # encryption and signature tests
 ```
-
-Optional scorer environment: `SILENTPROOF_CONTRACT_ID`, `TEE_ACCOUNT_ID`, `NEAR_AI_API_KEY` (LLM scoring; a keyword scorer is used without it).
 
 ---
 

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "composite": false,
+    "tsBuildInfoFile": null,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["api", "tee/core.ts", "tee/crypto.ts", "tee/scorer.ts"]
+}

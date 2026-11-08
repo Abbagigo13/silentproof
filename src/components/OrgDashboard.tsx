@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { DollarSign, ShieldCheck, FileText, TrendingUp, Plus, Wallet, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ReportCard } from './ReportCard'
 import { PostBountySheet } from './PostBountySheet'
 import { useNearWallet } from '../near/useNearWallet'
 import { useOrgData, nsToDate } from '../near/useBounties'
+import { requestScoring } from '../near/score'
 import { confirmPayout, rejectReport, fundBounty, registerContractOnUsdc } from '../near/contract'
 import { buildExplorerAccountUrl, yoctoToUsdc } from '../near/config'
 import type { Report, ReportStatus } from '../types'
@@ -63,6 +64,16 @@ export function OrgDashboard() {
   }, 0)
 
   const totalPool = bounties.reduce((sum, b) => sum + yoctoToUsdc(b.pool_balance), 0)
+
+  // Reports without a score yet: ask the hosted scorer to process them, then reload.
+  const unscoredCount = nearReports.filter(r => r.status === 'Pending' && r.tee_tier === null).length
+  useEffect(() => {
+    if (unscoredCount === 0) return
+    const run = () => { void requestScoring().then(r => { if (r && r.scored.length > 0) void refetch() }) }
+    const first = setTimeout(run, 1_000)
+    const id = setInterval(run, 20_000)
+    return () => { clearTimeout(first); clearInterval(id) }
+  }, [unscoredCount, refetch])
 
   const handleFund = useCallback(async (bountyId: number, amount: number) => {
     setActioning(`fund-${bountyId}`)

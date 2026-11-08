@@ -4,6 +4,7 @@ import { Lock, Upload, ChevronRight, ChevronLeft, CheckCircle2, Download, AlertC
 import { encryptAndUpload, downloadKeyFile } from '../crypto/encrypt'
 import { submitReport } from '../near/contract'
 import { useNearWallet } from '../near/useNearWallet'
+import { requestScoring } from '../near/score'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -65,6 +66,11 @@ export function SubmitReport() {
         payoutAddressHash: result.payoutAddressHash,
         authorAccount: form.connectWallet ? accountId : null,
       })
+
+      // Ask the hosted scorer to pick the report up once the transaction is final.
+      // The organization dashboard also retries, so this is best effort.
+      setTimeout(() => { void requestScoring() }, 5_000)
+      setTimeout(() => { void requestScoring() }, 15_000)
 
       setSubmitting(false)
       setSubmitStatus('')

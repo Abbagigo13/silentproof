@@ -11,14 +11,16 @@
     "compass:deploy": "bun run ./scripts/compass-deploy.ts",
     "fetch:abi": "bun run ./scripts/fetch-abi.ts",
     "lint": "oxlint --type-aware src scripts --fix; s=$?; oxlint --fix .; exit $((s>0?s:$?))",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "check": "bash scripts/check.sh",
     "contracts:build": "forge build",
     "contracts:test": "forge test",
     "tee:keygen": "bun tee/scorer.ts keygen",
     "tee:score": "bun tee/scorer.ts score",
     "tee:watch": "bun tee/scorer.ts watch",
-    "test:tee": "bun test tee/crypto.test.ts"
+    "test:tee": "bun test tee/crypto.test.ts",
+    "tee:env": "bun tee/scorer.ts env",
+    "tee:accesskey": "bun tee/scorer.ts accesskey"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.19.2",

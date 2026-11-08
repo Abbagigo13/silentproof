@@ -14,3 +14,4 @@ target/
 
 # TEE private keys
 tee/.keys.json
+tee/.access-key.json

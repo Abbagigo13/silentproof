@@ -47,11 +47,11 @@ This is the **project memory** - what Arc Studio remembers about building this a
 
 ## TEE Scorer
 
-- Path: `tee/scorer.ts` (+ `tee/crypto.ts`, tests: `bun run test:tee`)
-- `bun run tee:keygen` creates `tee/.keys.json` (gitignored) and prints VITE_TEE_PUBLIC_KEY plus the `register_tee_key` command
-- `bun run tee:watch` scores new reports; `bun run tee:score -- --report-id N`; add `--dry-run` to skip sending
-- Sending uses the `near` CLI, so the sending account must be logged in
-- Env (optional): `SILENTPROOF_CONTRACT_ID`, `TEE_ACCOUNT_ID`, `NEAR_AI_API_KEY`, `NEAR_RPC_URL`
+- Shared pipeline: `tee/core.ts`; keys and signing: `tee/crypto.ts`; CLI: `tee/scorer.ts`; hosted: `api/score.ts` (Vercel function)
+- The app calls `POST /api/score` after a submission (`src/near/score.ts`) and the org dashboard calls it while any report is unscored
+- Hosted env (Vercel, not VITE_): `TEE_KEYS_JSON` (`bun run tee:env`), `TEE_NEAR_PRIVATE_KEY` + `TEE_NEAR_ACCOUNT_ID` (`bun run tee:accesskey`, a function-call key limited to `record_tee_score`), optional `NEAR_AI_API_KEY`
+- CLI: `bun run tee:keygen`, `tee:watch`, `tee:score -- --report-id N`, `--dry-run`; sending uses the `near` CLI (custom RPC via `NEAR_TESTNET_RPC`)
+- Tests: `bun run test:tee`; `bun run typecheck` also checks `api/` and `tee/` via `tsconfig.server.json`
 
 ## Encryption
 
