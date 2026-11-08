@@ -30,7 +30,7 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<BountyCategory>('fraud')
   const [tiers, setTiers] = useState({ critical: 5000, high: 1000, medium: 250 })
-  const [expiry, setExpiry] = useState('')
+  const [expiry, setExpiry] = useState(() => isoDateFromNow(30))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -174,10 +174,17 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
                   <input
                     type="date"
                     value={expiry}
+                    min={isoDateFromNow(1)}
+                    max={isoDateFromNow(365)}
                     onChange={e => setExpiry(e.target.value)}
                     className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                     style={{ background: 'var(--inner-bg)', border: '1px solid var(--border)', color: 'var(--ink)' }}
                   />
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--subtle)' }}>
+                    {expiry
+                      ? `Closes in ${Math.max(1, daysUntil(expiry))} days. The bounty cannot be changed after creation, and unspent funds can only be withdrawn after it closes.`
+                      : 'Pick a closing date between 1 and 365 days from now.'}
+                  </p>
                 </Field>
 
                 {error && (
@@ -216,6 +223,17 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
       )}
     </AnimatePresence>
   )
+}
+
+function isoDateFromNow(days: number): string {
+  const d = new Date(Date.now() + days * 86_400_000)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+function daysUntil(isoDate: string): number {
+  return Math.round((new Date(isoDate).getTime() - Date.now()) / 86_400_000)
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
