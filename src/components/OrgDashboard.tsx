@@ -30,7 +30,7 @@ function adaptReport(r: NearReport, bounty: NearBounty | undefined): Report {
 
 export function OrgDashboard() {
   const { accountId, isConnected, isInitializing, signIn, signOut } = useNearWallet()
-  const { reports: nearReports, bounties, loading: reportsLoading, refetch } = useOrgData(accountId)
+  const { reports: nearReports, bounties, loading: reportsLoading, error: loadError, refetch } = useOrgData(accountId)
   const bountiesLoading = reportsLoading
   const [activeTab, setActiveTab] = useState<ReportStatus>('pending')
   const [showPostBounty, setShowPostBounty] = useState(false)
@@ -191,6 +191,14 @@ export function OrgDashboard() {
           <StatCard icon={<FileText className="w-4 h-4" />} label="Reports in Queue" value={reportsLoading ? '...' : String(pending.length)} sub="pending review" color="var(--tier-high-ink)" />
           <StatCard icon={<TrendingUp className="w-4 h-4" />} label="Total Paid Out" value={`$${totalPaid.toLocaleString()}`} sub="USDC" color="var(--accent)" />
         </div>
+
+        {loadError && (
+          <div className="glass-inner rounded-xl p-3 mb-6">
+            <p className="text-xs" style={{ color: 'var(--danger)' }}>
+              Could not load data from NEAR: {loadError}. It will retry automatically.
+            </p>
+          </div>
+        )}
 
         {/* Your bounties */}
         <div className="mb-8">

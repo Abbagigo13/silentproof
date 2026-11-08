@@ -150,9 +150,32 @@ export interface ViewOptions {
   args?: Record<string, unknown>
 }
 
+// Public RPC endpoints, tried in order. The first that answers wins.
+const RPC_ENDPOINTS: string[] = [
+  'https://rpc.testnet.fastnear.com',
+  NEAR_CONFIG.nodeUrl,
+  'https://test.rpc.fastnear.com',
+]
+
+async function rpcCall(url: string, body: unknown): Promise<{ result?: { result: number[] }; error?: unknown }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`RPC ${res.status}`)
+    return (await res.json()) as { result?: { result: number[] }; error?: unknown }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function viewContract<T>(opts: ViewOptions): Promise<T> {
   const { contractId, methodName, args = {} } = opts
-  const url = NEAR_CONFIG.nodeUrl
   const body = {
     jsonrpc: '2.0',
     id: 'dontcare',
@@ -166,17 +189,18 @@ export async function viewContract<T>(opts: ViewOptions): Promise<T> {
     },
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-
-  const data = await res.json() as { result?: { result: number[] }; error?: unknown }
-  if (data.error) throw new Error(JSON.stringify(data.error))
-  if (!data.result) throw new Error('No result from NEAR RPC view call')
-
-  const bytes = new Uint8Array(data.result.result)
-  const text = new TextDecoder().decode(bytes)
-  return JSON.parse(text) as T
+  let lastError: unknown = null
+  for (const url of RPC_ENDPOINTS) {
+    try {
+      const data = await rpcCall(url, body)
+      if (data.error) throw new Error(JSON.stringify(data.error))
+      if (!data.result) throw new Error('No result from NEAR RPC view call')
+      const text = new TextDecoder().decode(new Uint8Array(data.result.result))
+      return JSON.parse(text) as T
+    } catch (e) {
+      lastError = e
+      console.warn(`[near] view ${methodName} failed on ${url}`, e)
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('All NEAR RPC endpoints failed')
 }
