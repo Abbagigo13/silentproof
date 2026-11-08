@@ -308,8 +308,8 @@ export function OrgDashboard() {
           >
             <h3 className="display font-700 text-lg" style={{ color: 'var(--ink)' }}>Fund bounty #{fundId}</h3>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
-              Transfers USDC from your wallet into the bounty pool. Minimum 10 USDC. You need a USDC balance
-              and the one-time contract registration above.
+              Transfers Circle USDC from your wallet into the bounty pool. Minimum 10 USDC. Get free test USDC
+              at faucet.circle.com (choose NEAR Testnet). The contract must be registered on the token once.
             </p>
             <input
               type="number"
@@ -354,7 +354,8 @@ export function OrgDashboard() {
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               The contract only stores a hash of the submitter's payout address. Enter the address
               exactly as the submitter provided it. The contract checks it against the hash before
-              sending any USDC.
+              sending any USDC. If the transfer fails (for example the address has no USDC account),
+              the payout is rolled back and the report returns to Pending.
             </p>
             <input
               type="text"

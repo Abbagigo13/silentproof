@@ -40,8 +40,10 @@ near deploy \
 
 echo ""
 echo "==> Initializing contract..."
+# Circle USDC on NEAR testnet (https://developers.circle.com/stablecoins/usdc-contract-addresses)
+USDC_CONTRACT="${USDC_CONTRACT:-3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af}"
 near call "$ACCOUNT_ID" new \
-  '{}' \
+  "{\"owner\":\"$ACCOUNT_ID\",\"usdc_contract\":\"$USDC_CONTRACT\"}" \
   --accountId "$ACCOUNT_ID"
 
 echo ""

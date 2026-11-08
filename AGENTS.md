@@ -78,7 +78,9 @@ bun run dev
 ```
 
 ## Deployed contract (NEAR testnet)
-- Account: `abbagigo.testnet` (initialized with owner `abbagigo.testnet`)
+- Account: `abbagigo.testnet` (owner `abbagigo.testnet`; USDC token = Circle USDC `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`)
+- `new(owner, usdc_contract)`; re-running it is allowed only from the contract account and wipes state (the TEE key must then be registered again)
+- Judges/users get test USDC free at https://faucet.circle.com (NEAR Testnet), so we never fund anyone
 - Deploy tx: GefQcTd3QjExj4zMDbX68KcDckJjYPbNPKdn3eJA2HmU
 - Build: `cargo near build non-reproducible-wasm --no-abi` (in Codespaces), 190 KB wasm
 - Frontend reads it via `VITE_NEAR_CONTRACT_ADDRESS` (set to `abbagigo.testnet`)
@@ -88,4 +90,4 @@ bun run dev
 ## Setup still required before a real end-to-end run
 - `bun run tee:keygen`, then set `VITE_TEE_PUBLIC_KEY` and run the printed `register_tee_key` command as the owner
 - `VITE_PINATA_JWT` (Pinata key with Files: Write only) for IPFS uploads
-- Test USDC for the org account on `usdc.fakes.testnet`, plus the one-time "Register contract for USDC" button
+- Circle test USDC for the org account (faucet.circle.com); the contract account must be registered on the token once (`storage_deposit`)

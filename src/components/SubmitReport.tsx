@@ -251,7 +251,7 @@ export function SubmitReport() {
               type="text"
               value={form.payoutAddress}
               onChange={e => setForm(f => ({ ...f, payoutAddress: e.target.value }))}
-              placeholder="0x... or yourname.near"
+              placeholder="yourname.testnet"
               className="w-full rounded-xl px-4 py-3.5 text-sm mono outline-none transition-all"
               style={{
                 background: 'var(--inner-bg)',
@@ -260,7 +260,7 @@ export function SubmitReport() {
               }}
             />
             <p className="text-xs mt-2" style={{ color: 'var(--subtle)' }}>
-              Provide a one-time address you control. This is stored as a hash on-chain, not as plaintext.
+              Use a one-time NEAR account you control that can hold Circle USDC (free from faucet.circle.com, choose NEAR Testnet). Only a hash is stored onchain.
             </p>
           </div>
 

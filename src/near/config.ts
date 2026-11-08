@@ -21,10 +21,16 @@ export const CONTRACT_ADDRESS: string =
   (import.meta.env.VITE_NEAR_CONTRACT_ADDRESS as string | undefined) ?? 'abbagigo.testnet'
 
 /**
- * USDC NEP-141 token contract on NEAR testnet.
- * Circle's official USDC testnet contract.
+ * Circle's native USDC (NEP-141) on NEAR testnet, from
+ * https://developers.circle.com/stablecoins/usdc-contract-addresses
+ * Anyone can get some from https://faucet.circle.com (choose NEAR Testnet).
+ * The deployed contract stores the same address; keep them in sync.
  */
-export const USDC_CONTRACT = 'usdc.fakes.testnet'
+export const USDC_CONTRACT: string =
+  (import.meta.env.VITE_USDC_CONTRACT as string | undefined)?.trim() ||
+  '3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af'
+
+export const USDC_FAUCET_URL = 'https://faucet.circle.com'
 
 /** USDC has 6 decimals on NEAR (same as EVM) */
 export const USDC_DECIMALS = 6

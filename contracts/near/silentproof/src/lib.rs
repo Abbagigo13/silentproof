@@ -33,10 +33,12 @@ use near_sdk::{
 /// Gas for cross-contract USDC ft_transfer call
 const GAS_FT_TRANSFER: Gas = Gas::from_tgas(10);
 
-/// USDC NEP-141 contract on NEAR testnet
-/// Mainnet: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
-/// Testnet: use Circle's USDC testnet contract or a mock
-const USDC_TESTNET: &str = "usdc.fakes.testnet";
+/// Gas reserved for the payout / withdrawal rollback callbacks
+const GAS_CALLBACK: Gas = Gas::from_tgas(10);
+
+// The USDC token is set at initialization (`usdc_contract`), not hard-coded.
+// Circle USDC on NEAR testnet: 3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af
+// Circle USDC on NEAR mainnet: 17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1
 
 /// Yoctoswap: 1 USDC in NEP-141 = 1_000_000 units (6 decimals)
 const USDC_DECIMALS: u128 = 1_000_000;
@@ -149,6 +151,8 @@ pub trait FungibleToken {
 pub struct SilentProof {
     /// Contract owner (can register TEE key, pause contract)
     owner: AccountId,
+    /// NEP-141 USDC token this contract accepts and pays out
+    usdc_contract: AccountId,
     /// Registered TEE ECDSA public key (hex-encoded, 65 bytes uncompressed)
     tee_public_key: Option<String>,
     /// All bounties by ID
@@ -170,11 +174,19 @@ pub struct SilentProof {
 
 #[near_bindgen]
 impl SilentProof {
-    #[init]
-    pub fn new(owner: AccountId) -> Self {
-        require!(!env::state_exists(), "Already initialized");
+    /// Initialize the contract. Calling it again (to change the token, for example)
+    /// is allowed only from the contract account itself and resets all stored data.
+    #[init(ignore_state)]
+    pub fn new(owner: AccountId, usdc_contract: AccountId) -> Self {
+        if env::state_exists() {
+            require!(
+                env::predecessor_account_id() == env::current_account_id(),
+                "Already initialized"
+            );
+        }
         Self {
             owner,
+            usdc_contract,
             tee_public_key: None,
             bounties: UnorderedMap::new(b"b".to_vec()),
             reports: UnorderedMap::new(b"r".to_vec()),
@@ -274,7 +286,7 @@ impl SilentProof {
         msg: String,
     ) -> PromiseOrValue<U128> {
         require!(
-            env::predecessor_account_id().as_str() == USDC_TESTNET,
+            env::predecessor_account_id() == self.usdc_contract,
             "Only USDC contract may call ft_on_transfer"
         );
         require!(amount.0 >= MIN_POOL, "Minimum pool funding is 10 USDC");
@@ -500,14 +512,40 @@ impl SilentProof {
             report_id, payout_amount, payout_address
         ));
 
-        // Transfer USDC to submitter's payout address
-        let usdc_contract: AccountId = USDC_TESTNET.parse().unwrap();
+        // Transfer USDC to submitter's payout address. If the transfer fails (for example the
+        // recipient is not registered on the token), the callback restores the report and pool.
         let receiver: AccountId = payout_address.parse().expect("Invalid payout address");
 
-        ext_ft::ext(usdc_contract)
+        ext_ft::ext(self.usdc_contract.clone())
             .with_attached_deposit(NearToken::from_yoctonear(1))
             .with_static_gas(GAS_FT_TRANSFER)
             .ft_transfer(receiver, U128(payout_amount), Some(format!("SilentProof payout report#{}", report_id)))
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_CALLBACK)
+                    .on_payout_resolved(report_id, report.bounty_id, U128(payout_amount)),
+            )
+    }
+
+    /// Callback after the USDC transfer. Undoes the payout bookkeeping if the transfer failed.
+    #[private]
+    pub fn on_payout_resolved(&mut self, report_id: ReportId, bounty_id: BountyId, amount: U128) -> bool {
+        if env::promise_result_checked(0, 64).is_ok() {
+            return true;
+        }
+        let mut report = self.reports.get(&report_id).expect("Report not found");
+        report.status = ReportStatus::Pending;
+        self.reports.insert(&report_id, &report);
+
+        let mut bounty = self.bounties.get(&bounty_id).expect("Bounty not found");
+        bounty.pool_balance = U128(bounty.pool_balance.0 + amount.0);
+        self.bounties.insert(&bounty_id, &bounty);
+
+        env::log_str(&format!(
+            "Payout failed and was rolled back: report={}, amount={}",
+            report_id, amount.0
+        ));
+        false
     }
 
     /// Reject a report. USDC stays in the pool.
@@ -554,11 +592,29 @@ impl SilentProof {
             bounty_id, withdraw_amount, bounty.org_account
         ));
 
-        let usdc_contract: AccountId = USDC_TESTNET.parse().unwrap();
-        ext_ft::ext(usdc_contract)
+        ext_ft::ext(self.usdc_contract.clone())
             .with_attached_deposit(NearToken::from_yoctonear(1))
             .with_static_gas(GAS_FT_TRANSFER)
             .ft_transfer(bounty.org_account, U128(withdraw_amount), Some(format!("SilentProof bounty#{} withdrawal", bounty_id)))
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_CALLBACK)
+                    .on_withdraw_resolved(bounty_id, U128(withdraw_amount)),
+            )
+    }
+
+    /// Callback after a withdrawal transfer. Reopens the bounty if the transfer failed.
+    #[private]
+    pub fn on_withdraw_resolved(&mut self, bounty_id: BountyId, amount: U128) -> bool {
+        if env::promise_result_checked(0, 64).is_ok() {
+            return true;
+        }
+        let mut bounty = self.bounties.get(&bounty_id).expect("Bounty not found");
+        bounty.pool_balance = U128(bounty.pool_balance.0 + amount.0);
+        bounty.active = true;
+        self.bounties.insert(&bounty_id, &bounty);
+        env::log_str(&format!("Withdrawal failed and was rolled back: bounty={}", bounty_id));
+        false
     }
 
     // ─── View functions ───────────────────────────────────────────────────────
@@ -643,7 +699,7 @@ impl SilentProof {
             "total_bounties": self.next_bounty_id,
             "total_reports": self.next_report_id,
             "paused": self.paused,
-            "usdc_contract": USDC_TESTNET,
+            "usdc_contract": self.usdc_contract,
         })
     }
 
@@ -673,7 +729,7 @@ mod tests {
     }
 
     fn new_contract() -> SilentProof {
-        SilentProof::new(accounts(0)) // accounts(0) = "alice"
+        SilentProof::new(accounts(0), accounts(4)) // owner = alice, usdc = eve
     }
 
     #[test]
