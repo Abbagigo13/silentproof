@@ -14,7 +14,7 @@
  * Environment (all optional):
  *   SILENTPROOF_CONTRACT_ID  contract account (default abbagigo.testnet)
  *   TEE_ACCOUNT_ID           NEAR account that sends the transaction (default: the contract)
- *   NEAR_RPC_URL             default https://rpc.testnet.near.org
+ *   NEAR_RPC_URL             tried first if set; otherwise FastNEAR endpoints, then rpc.testnet.near.org
  *   NEAR_NETWORK             default testnet
  *   NEAR_AI_API_KEY          enables LLM scoring; without it a keyword scorer is used
  *   TEE_KEYS_PATH            where keys are stored (default tee/.keys.json, gitignored)
@@ -44,7 +44,14 @@ import {
 
 const CONTRACT_ID = process.env.SILENTPROOF_CONTRACT_ID ?? 'abbagigo.testnet'
 const TEE_ACCOUNT_ID = process.env.TEE_ACCOUNT_ID ?? CONTRACT_ID
-const RPC_URL = process.env.NEAR_RPC_URL ?? 'https://rpc.testnet.near.org'
+// rpc.testnet.near.org is deprecated and rate-limits heavily, so FastNEAR goes first.
+const RPC_URLS: string[] = [
+  ...(process.env.NEAR_RPC_URL ? [process.env.NEAR_RPC_URL] : []),
+  'https://rpc.testnet.fastnear.com',
+  'https://test.rpc.fastnear.com',
+  'https://rpc.testnet.near.org',
+]
+const CLI_NODE_URL = RPC_URLS[0]
 const NETWORK = process.env.NEAR_NETWORK ?? 'testnet'
 const NEAR_AI_API_KEY = process.env.NEAR_AI_API_KEY ?? ''
 const NEAR_AI_BASE_URL = 'https://api.near.ai/v1'
@@ -112,25 +119,38 @@ function printKeyInstructions(keys: TeeKeys): void {
 // ─── NEAR RPC ─────────────────────────────────────────────────────────────────
 
 async function view<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 'silentproof',
-      method: 'query',
-      params: {
-        request_type: 'call_function',
-        finality: 'final',
-        account_id: CONTRACT_ID,
-        method_name: method,
-        args_base64: Buffer.from(JSON.stringify(args)).toString('base64'),
-      },
-    }),
+  const body = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 'silentproof',
+    method: 'query',
+    params: {
+      request_type: 'call_function',
+      finality: 'final',
+      account_id: CONTRACT_ID,
+      method_name: method,
+      args_base64: Buffer.from(JSON.stringify(args)).toString('base64'),
+    },
   })
-  const data = (await res.json()) as { result?: { result: number[] }; error?: unknown }
-  if (data.error || !data.result) throw new Error(`View ${method} failed: ${JSON.stringify(data.error ?? data)}`)
-  return JSON.parse(Buffer.from(data.result.result).toString('utf8')) as T
+  let lastError = 'no endpoint tried'
+  for (const url of RPC_URLS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(10_000),
+      })
+      const data = (await res.json()) as { result?: { result: number[] }; error?: unknown }
+      if (data.error || !data.result) {
+        lastError = `${url} -> ${JSON.stringify(data.error ?? data).slice(0, 160)}`
+        continue
+      }
+      return JSON.parse(Buffer.from(data.result.result).toString('utf8')) as T
+    } catch (e) {
+      lastError = `${url} -> ${e instanceof Error ? e.message : String(e)}`
+    }
+  }
+  throw new Error(`View ${method} failed on every endpoint. Last: ${lastError}`)
 }
 
 function runCli(args: string[]): Promise<string> {
@@ -159,6 +179,7 @@ async function recordScore(
     'call', CONTRACT_ID, 'record_tee_score', JSON.stringify(args),
     '--accountId', TEE_ACCOUNT_ID,
     '--networkId', NETWORK,
+    '--nodeUrl', CLI_NODE_URL,
     '--gas', '100000000000000',
   ])
 }
