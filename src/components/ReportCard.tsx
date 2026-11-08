@@ -12,7 +12,7 @@ function timeAgo(date: Date): string {
 
 function formatUsd(n: number): string {
   if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`
-  return `$${n}`
+  return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -38,13 +38,15 @@ interface ReportCardProps {
 export function ReportCard({ report, onConfirm, onReject, actioning = false }: ReportCardProps) {
   const isPending = report.status === 'pending'
   const isConfirmed = report.status === 'confirmed'
+  const amount = report.payoutAmount ?? PAYOUT_AMOUNTS[report.tier ?? 'medium']
+  const poolTooSmall = report.poolRemaining !== undefined && report.poolRemaining < amount
 
   return (
     <article className="glass-card rounded-2xl p-5 flex flex-col gap-4">
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5">
-          <TierBadge tier={report.tier} amount={PAYOUT_AMOUNTS[report.tier]} />
+          <TierBadge tier={report.tier} amount={amount} />
           <span className="text-xs" style={{ color: 'var(--subtle)' }}>
             Bounty: <span style={{ color: CATEGORY_COLORS[report.category] }}>{report.bountyTitle}</span>
           </span>
@@ -92,17 +94,24 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
       </div>
 
       {/* Actions */}
+      {isPending && poolTooSmall && (
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>
+          The pool (${report.poolRemaining?.toLocaleString()}) is below this tier's payout ({formatUsd(amount)}). Fund the
+          bounty to pay it, or reject the report.
+        </p>
+      )}
+
       {isPending && onConfirm && onReject && (
         <div className="flex gap-2 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
           <button
-            disabled={actioning}
+            disabled={actioning || poolTooSmall}
             onClick={() => onConfirm(report.id)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}
           >
             {actioning
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Confirming...</>
-              : <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm · {formatUsd(PAYOUT_AMOUNTS[report.tier ?? 'medium'])} USDC</>
+              : <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm · {formatUsd(amount)} USDC</>
             }
           </button>
           <button
@@ -123,7 +132,7 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
           style={{ borderTop: '1px solid var(--border)', color: 'var(--success)' }}
         >
           <CheckCircle2 className="w-3.5 h-3.5" />
-          Payout of {formatUsd(PAYOUT_AMOUNTS[report.tier])} USDC confirmed
+          Payout of {formatUsd(amount)} USDC confirmed
         </div>
       )}
 

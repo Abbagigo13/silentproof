@@ -33,4 +33,8 @@ export interface Report {
   submittedAt: Date
   status: ReportStatus
   payoutAddress: string
+  /** Payout in USDC for this report's tier, from its bounty */
+  payoutAmount?: number
+  /** USDC currently in the bounty pool */
+  poolRemaining?: number
 }

@@ -25,6 +25,12 @@ function adaptReport(r: NearReport, bounty: NearBounty | undefined): Report {
     submittedAt: nsToDate(r.submitted_at_ns),
     status: r.status.toLowerCase() as ReportStatus,
     payoutAddress: r.payout_address_hash,
+    payoutAmount: bounty
+      ? yoctoToUsdc(
+          r.tee_tier === 'Critical' ? bounty.tier_critical : r.tee_tier === 'High' ? bounty.tier_high : bounty.tier_medium,
+        )
+      : undefined,
+    poolRemaining: bounty ? yoctoToUsdc(bounty.pool_balance) : undefined,
   }
 }
 
@@ -227,6 +233,14 @@ export function OrgDashboard() {
                     <p className="text-xs" style={{ color: 'var(--subtle)' }}>
                       #{b.id} · Pool ${yoctoToUsdc(b.pool_balance).toLocaleString()} USDC · ends {nsToDate(b.expiry_ns).toLocaleDateString()}
                     </p>
+                    <p className="text-xs" style={{ color: 'var(--subtle)' }}>
+                      Payouts: Critical ${yoctoToUsdc(b.tier_critical)} · High ${yoctoToUsdc(b.tier_high)} · Medium ${yoctoToUsdc(b.tier_medium)}
+                    </p>
+                    {b.active && yoctoToUsdc(b.pool_balance) < yoctoToUsdc(b.tier_critical) && (
+                      <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                        Pool is below the Critical payout, so a Critical report cannot be paid yet.
+                      </p>
+                    )}
                   </div>
                   {b.active && (
                     <button

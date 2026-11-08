@@ -29,7 +29,7 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<BountyCategory>('fraud')
-  const [tiers, setTiers] = useState({ critical: 5000, high: 1000, medium: 250 })
+  const [tiers, setTiers] = useState({ critical: 10, high: 5, medium: 2 })
   const [expiry, setExpiry] = useState(() => isoDateFromNow(30))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +146,7 @@ export function PostBountySheet({ open, onClose }: PostBountySheetProps) {
                 </Field>
 
                 {/* Payout tiers */}
-                <Field label="Payout tiers (USDC)">
+                <Field label="Payout tiers (USDC). The pool must hold at least a tier's amount to pay it.">
                   <div className="grid grid-cols-3 gap-2">
                     {(['critical', 'high', 'medium'] as const).map(tier => (
                       <div key={tier}>
