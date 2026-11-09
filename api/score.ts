@@ -52,26 +52,37 @@ function makeSender(contractId: string) {
   const secret = process.env.TEE_NEAR_PRIVATE_KEY
   if (!secret) throw new Error('TEE_NEAR_PRIVATE_KEY is not set')
 
-  const provider = new providers.FailoverRpcProvider(
-    DEFAULT_RPC_URLS.map(url => new providers.JsonRpcProvider({ url })),
-  )
   const signer = KeyPairSigner.fromSecretKey(secret as `ed25519:${string}`)
-  const account = new Account(accountId, provider, signer)
+  // Network trouble is retried on the next endpoint. Anything else (a rejected
+  // key, a contract error) is real and is reported as is, not hidden.
+  const transient = /fetch failed|timeout|timed out|ECONN|ENOTFOUND|429|Too Many|50[0-4]/i
 
   return async (s: SignedScore): Promise<void> => {
-    await account.callFunction({
-      contractId,
-      methodName: 'record_tee_score',
-      args: {
-        report_id: s.reportId,
-        tier: s.tier,
-        score: s.score,
-        summary_hash: s.summaryHash,
-        signature_hex: s.signatureHex,
-      },
-      gas: BigInt('50000000000000'),
-      waitUntil: 'INCLUDED',
-    })
+    let last: unknown = new Error('no RPC endpoint tried')
+    for (const url of DEFAULT_RPC_URLS) {
+      const account = new Account(accountId, new providers.JsonRpcProvider({ url }), signer)
+      try {
+        await account.callFunction({
+          contractId,
+          methodName: 'record_tee_score',
+          args: {
+            report_id: s.reportId,
+            tier: s.tier,
+            score: s.score,
+            summary_hash: s.summaryHash,
+            signature_hex: s.signatureHex,
+          },
+          gas: BigInt('50000000000000'),
+          waitUntil: 'INCLUDED',
+        })
+        return
+      } catch (e) {
+        last = e
+        const message = e instanceof Error ? e.message : String(e)
+        if (!transient.test(message)) throw e
+      }
+    }
+    throw last
   }
 }
 

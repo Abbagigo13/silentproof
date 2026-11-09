@@ -39,14 +39,24 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
   const isPending = report.status === 'pending'
   const isConfirmed = report.status === 'confirmed'
   const amount = report.payoutAmount ?? PAYOUT_AMOUNTS[report.tier ?? 'medium']
-  const poolTooSmall = report.poolRemaining !== undefined && report.poolRemaining < amount
+  const scored = report.scored !== false
+  const poolTooSmall = scored && report.poolRemaining !== undefined && report.poolRemaining < amount
 
   return (
     <article className="glass-card rounded-2xl p-5 flex flex-col gap-4">
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5">
-          <TierBadge tier={report.tier} amount={amount} />
+          {scored ? (
+            <TierBadge tier={report.tier} amount={amount} />
+          ) : (
+            <span
+              className="inline-flex w-fit items-center px-2.5 py-1 rounded-lg text-xs font-semibold"
+              style={{ background: 'var(--inner-bg)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+            >
+              Awaiting score
+            </span>
+          )}
           <span className="text-xs" style={{ color: 'var(--subtle)' }}>
             Bounty: <span style={{ color: CATEGORY_COLORS[report.category] }}>{report.bountyTitle}</span>
           </span>
@@ -58,6 +68,7 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
       </div>
 
       {/* Credibility bar */}
+      {scored ? (
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>AI Credibility Score</span>
@@ -78,6 +89,11 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
           />
         </div>
       </div>
+      ) : (
+        <p className="text-xs" style={{ color: 'var(--subtle)' }}>
+          The scorer has not rated this report yet. This page checks again automatically.
+        </p>
+      )}
 
       {/* AI Summary */}
       <div className="glass-inner rounded-xl p-3">
@@ -104,14 +120,16 @@ export function ReportCard({ report, onConfirm, onReject, actioning = false }: R
       {isPending && onConfirm && onReject && (
         <div className="flex gap-2 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
           <button
-            disabled={actioning || poolTooSmall}
+            disabled={actioning || poolTooSmall || !scored}
             onClick={() => onConfirm(report.id)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}
           >
             {actioning
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Confirming...</>
-              : <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm · {formatUsd(amount)} USDC</>
+              : scored
+                ? <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm · {formatUsd(amount)} USDC</>
+                : <>Waiting for score</>
             }
           </button>
           <button

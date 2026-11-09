@@ -26,6 +26,7 @@ function adaptReport(r: NearReport, bounty: NearBounty | undefined): Report {
     submittedAt: nsToDate(r.submitted_at_ns),
     status: r.status.toLowerCase() as ReportStatus,
     payoutAddress: r.payout_address_hash,
+    scored: r.tee_tier !== null,
     payoutAmount: bounty
       ? yoctoToUsdc(
           r.tee_tier === 'Critical' ? bounty.tier_critical : r.tee_tier === 'High' ? bounty.tier_high : bounty.tier_medium,
