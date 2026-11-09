@@ -287,7 +287,7 @@ export function SubmitReport() {
                 Connect a NEAR account for on-chain authorship proof
               </span>
               <span className="text-xs" style={{ color: 'var(--subtle)' }}>
-                Optional. Links your report to a one-time NEAR account without revealing your identity.
+                Optional. Publicly links this report to the connected account. Only tick this if you want to prove authorship later.
               </span>
             </label>
           </div>
@@ -296,9 +296,11 @@ export function SubmitReport() {
             <div
               className="glass-inner rounded-xl p-4 flex items-center gap-3"
             >
-              <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
+              <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--danger)' }} />
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                NEAR Wallet Selector will be available when the contract is deployed on NEAR testnet.
+                {isConnected
+                  ? `Your account ${accountId ?? ''} will be written onchain next to this report, so anyone can see who submitted it. Leave this unticked to keep the report unlinked.`
+                  : 'Connect a wallet first (banner above). The connected account will be written onchain next to this report. Leave this unticked to keep the report unlinked.'}
               </p>
             </div>
           )}
