@@ -47,9 +47,21 @@ function shortError(e: unknown): string {
   return (e instanceof Error ? e.message : String(e)).slice(0, 160)
 }
 
+/** Tolerates copy-paste slips: surrounding spaces or quotes, or a pasted "NAME=" prefix. */
+function cleanEnv(name: string): string | undefined {
+  let v = process.env[name]
+  if (!v) return undefined
+  v = v.trim()
+  if (v.startsWith(`${name}=`)) v = v.slice(name.length + 1).trim()
+  if (v.length > 1 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
+    v = v.slice(1, -1).trim()
+  }
+  return v
+}
+
 function makeSender(contractId: string) {
-  const accountId = process.env.TEE_NEAR_ACCOUNT_ID ?? contractId
-  const secret = process.env.TEE_NEAR_PRIVATE_KEY
+  const accountId = cleanEnv('TEE_NEAR_ACCOUNT_ID') ?? contractId
+  const secret = cleanEnv('TEE_NEAR_PRIVATE_KEY')
   if (!secret) throw new Error('TEE_NEAR_PRIVATE_KEY is not set')
 
   const signer = KeyPairSigner.fromSecretKey(secret as `ed25519:${string}`)
@@ -100,8 +112,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   }
   lastRun = now
 
-  const keysJson = process.env.TEE_KEYS_JSON
-  if (!keysJson || !process.env.TEE_NEAR_PRIVATE_KEY) {
+  const keysJson = cleanEnv('TEE_KEYS_JSON')
+  if (!keysJson || !cleanEnv('TEE_NEAR_PRIVATE_KEY')) {
     res.status(503).json({ error: 'Scorer is not configured' })
     return
   }
