@@ -18,7 +18,7 @@
     "tee:keygen": "bun tee/scorer.ts keygen",
     "tee:score": "bun tee/scorer.ts score",
     "tee:watch": "bun tee/scorer.ts watch",
-    "test:tee": "bun test tee/crypto.test.ts",
+    "test:tee": "bun test tee/",
     "tee:env": "bun tee/scorer.ts env",
     "tee:accesskey": "bun tee/scorer.ts accesskey"
   },

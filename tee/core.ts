@@ -151,10 +151,18 @@ export function demoScore(text: string): ScoreResult {
   const t = text.toLowerCase()
   let severity: Tier = 'Medium'
   let credibility = 55
-  if (['fraud', 'embezzle', 'brib', 'safety', 'injur', 'illegal', 'launder'].some(k => t.includes(k))) {
+  const critical = [
+    'fraud', 'embezzle', 'brib', 'kickback', 'launder', 'corrupt', 'forged', 'falsif', 'theft', 'stole',
+    'safety', 'unsafe', 'injur', 'death', 'died', 'assault', 'illegal', 'toxic', 'hazard',
+  ]
+  const high = [
+    'violation', 'discriminat', 'harass', 'conflict of interest', 'abuse', 'abusive', 'retaliat', 'exploit',
+    'wage', 'overtime', 'misappropriat', 'negligen', 'cover up', 'covered up', 'breach', 'threat',
+  ]
+  if (critical.some(k => t.includes(k))) {
     severity = 'Critical'
     credibility = 75
-  } else if (['violation', 'discriminat', 'harass', 'conflict of interest'].some(k => t.includes(k))) {
+  } else if (high.some(k => t.includes(k))) {
     severity = 'High'
     credibility = 65
   }
