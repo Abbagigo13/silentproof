@@ -83,6 +83,12 @@ export function BountyCard({ bounty }: BountyCardProps) {
         </div>
       </div>
 
+      {bounty.poolRemaining < bounty.tiers.critical && (
+        <p className="text-xs text-pretty" style={{ color: 'var(--subtle)' }}>
+          The pool is below the Critical payout, so a Critical report may not be payable in full.
+        </p>
+      )}
+
       {/* CTA */}
       <Link
         to={`/submit/${bounty.id}`}

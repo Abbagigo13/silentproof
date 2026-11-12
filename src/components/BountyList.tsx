@@ -75,12 +75,16 @@ const DEMO_BOUNTIES: Bounty[] = [
 export function BountyList() {
   const { bounties: nearBounties, loading, error } = useBounties()
 
-  // Use live NEAR data when available, fall back to demo data
-  const bounties: Bounty[] = nearBounties.length > 0
-    ? nearBounties.map(adaptBounty)
-    : DEMO_BOUNTIES
-
+  // Live data when the contract has bounties, sample cards otherwise.
+  // A bounty only accepts reports once its pool is funded, so unfunded ones are
+  // hidden from the public list (their organization still sees them in its dashboard).
   const isDemo = nearBounties.length === 0
+  const liveBounties = nearBounties.map(adaptBounty)
+  const funded = liveBounties
+    .filter(b => b.poolRemaining > 0)
+    .sort((a, b) => b.poolRemaining - a.poolRemaining)
+  const bounties: Bounty[] = isDemo ? DEMO_BOUNTIES : funded
+  const hiddenCount = isDemo ? 0 : liveBounties.length - funded.length
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
@@ -154,7 +158,7 @@ export function BountyList() {
         <div className="flex flex-col items-center justify-center py-24 gap-3">
           <ShieldCheck className="w-10 h-10" style={{ color: 'var(--border)' }} />
           <p className="text-sm" style={{ color: 'var(--subtle)' }}>
-            No active bounties. Check back soon.
+            No funded bounties right now. An organization has to fund a bounty before it can take reports.
           </p>
         </div>
       ) : (
@@ -163,6 +167,11 @@ export function BountyList() {
             <BountyCard key={b.id} bounty={b} />
           ))}
         </div>
+      )}
+      {hiddenCount > 0 && !loading && (
+        <p className="mt-6 text-xs text-center" style={{ color: 'var(--subtle)' }}>
+          {hiddenCount} unfunded {hiddenCount === 1 ? 'bounty is' : 'bounties are'} hidden until the organization funds the pool.
+        </p>
       )}
     </div>
   )

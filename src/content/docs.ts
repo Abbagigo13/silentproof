@@ -64,10 +64,10 @@ export const HOW_IT_WORKS: DocStep[] = [
 ]
 
 export const TRY_IT: DocStep[] = [
-  { title: 'Get test USDC', body: 'Request NEAR Testnet USDC for your account at faucet.circle.com. You also need a little testnet NEAR for fees.' },
+  { title: 'Get test USDC', body: 'Request NEAR Testnet USDC for your account at faucet.circle.com. You also need a little testnet NEAR for network fees; your wallet's testnet option or a NEAR testnet faucet can provide it.' },
   { title: 'Connect a wallet', body: 'Switch to Organization and connect Meteor Wallet on testnet.' },
   { title: 'Post a bounty', body: 'Keep the defaults (10, 5 and 2 USDC, 30 days) and create it.' },
-  { title: 'Fund the pool', body: 'Click Fund pool and send 10 USDC. The first time, also register the contract for USDC.' },
+  { title: 'Fund the pool', body: 'Click Fund pool and send 10 USDC. The contract is already registered for USDC, so you only need to approve the transfer.' },
   { title: 'Submit a report', body: 'Open the bounty as a reporter. Use the word \u201cfraud\u201d to see a Critical rating. Use an address that can hold Circle USDC.' },
   { title: 'Watch it get scored', body: 'The card moves from \u201cAwaiting score\u201d to a severity badge and a credibility percentage, usually within a minute.' },
   { title: 'Confirm the payout', body: 'Enter the payout address exactly as submitted and approve. The USDC arrives and the pool drops.' },
