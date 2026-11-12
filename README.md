@@ -89,7 +89,7 @@ You need a browser, and a NEAR testnet account in [Meteor Wallet](https://wallet
    *You should see:* your account name at the top of the dashboard.
 3. **Post a bounty.** Click **Post New Bounty**, keep the defaults (Critical 10, High 5, Medium 2 USDC, 30 days) and create it.
    *You should see:* the bounty under **Your bounties** with a $0 pool and a warning that the pool is below the Critical payout.
-4. **Fund it.** Click **Fund pool** on that bounty, send 10 USDC and approve. The first time, also click **Register contract for USDC** if funding fails.
+4. **Fund it.** Click **Fund pool** on that bounty, send 10 USDC and approve. The contract is already registered for USDC, so you only approve the transfer.
    *You should see:* the pool change to $10 and the warning disappear.
 5. **Submit a report.** Switch to **Submitter**, open that bounty and click **Submit a Report**. Write at least 20 characters (the word "fraud" makes the demo scorer rate it Critical), enter a payout address that can hold Circle USDC (your own account works) and submit. Download the key file on the receipt.
    *You should see:* a receipt with an IPFS content ID.

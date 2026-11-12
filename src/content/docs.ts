@@ -64,7 +64,7 @@ export const HOW_IT_WORKS: DocStep[] = [
 ]
 
 export const TRY_IT: DocStep[] = [
-  { title: 'Get test USDC', body: 'Request NEAR Testnet USDC for your account at faucet.circle.com. You also need a little testnet NEAR for network fees; your wallet's testnet option or a NEAR testnet faucet can provide it.' },
+  { title: 'Get test USDC', body: 'Request NEAR Testnet USDC for your account at faucet.circle.com. You also need a little testnet NEAR for network fees; the testnet option of your wallet or a NEAR testnet faucet can provide it.' },
   { title: 'Connect a wallet', body: 'Switch to Organization and connect Meteor Wallet on testnet.' },
   { title: 'Post a bounty', body: 'Keep the defaults (10, 5 and 2 USDC, 30 days) and create it.' },
   { title: 'Fund the pool', body: 'Click Fund pool and send 10 USDC. The contract is already registered for USDC, so you only need to approve the transfer.' },
