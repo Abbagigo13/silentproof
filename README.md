@@ -99,7 +99,7 @@ You need a browser, and a NEAR testnet account in [Meteor Wallet](https://wallet
    *You should see:* the report move to **Confirmed**, the pool drop to $0, and the USDC arrive at the payout address.
 8. **Reject instead (optional).** On another report click **Reject**; the pool is unchanged.
 
-Light and dark mode: the sun and moon icon in the top bar.
+Light and dark mode: the sun and moon icon in the top bar. The in-app **Docs** page (link in the top bar and footer) has an overview, how it works, the trust model and an FAQ.
 
 ---
 
